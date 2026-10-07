@@ -167,3 +167,8 @@ Linux containers; go-inject builds work everywhere go-inject does.
 - Go 1.25–1.27
 - [go-inject](https://github.com/kakj-go/go-inject) ≥ v0.1.0-beta.3 (the
   otelc rules depend on the map-vs-struct-literal-key renaming fix)
+
+
+## Contributing and CI
+
+Changes to the default branch require a pull request and passing CI. See [the branch protection and CI policy](docs/ci.md).
