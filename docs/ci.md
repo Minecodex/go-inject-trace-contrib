@@ -47,3 +47,5 @@ GORM 矩阵逐项使用声明的 excepted-file，版本验收文件来自同一�
 PostgreSQL dialector 与 database/sql 的连接信息使用已注入的导出元数据字段传递，避免跨包断言不存在的私有 getter/setter 导致丢失嵌套 SQL span。保留原始 db.statement 和单独的参数标签，不改写 SQL 以适配验收文件。
 
 Docker CMD 健康检查保留声明的参数边界，避免将 bash -c 的脚本拆开后让外层 sh 解释 /dev/tcp，误报 Mongo 等依赖不健康。健康失败包含实际探针输出和服务日志，不把超时当作可忽略的场景。
+
+Elasticsearch v8 使用完整 /v8 模块路径，并固定每个声明单元的实际框架版本，避免非法 major path 或聚合 SDK 依赖把较低版本单元升级成同一个版本。
