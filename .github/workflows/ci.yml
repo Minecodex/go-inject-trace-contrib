@@ -6,32 +6,117 @@ on:
   push:
     branches: [master]
   workflow_dispatch:
+    inputs:
+      full:
+        type: boolean
+        default: false
+        description: Check all native platforms and all telemetry scenarios
+  workflow_call:
+    inputs:
+      full:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   go:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix:
+        os: ${{ fromJSON(inputs.full && '["ubuntu-24.04","ubuntu-24.04-arm","windows-2025","windows-11-arm","macos-15-intel","macos-15"]' || '["ubuntu-24.04"]') }}
+        go: ${{ fromJSON(inputs.full && '["1.25.8","1.26.8","1.27.1"]' || '["1.27.1"]') }}
+    env:
+      GOTOOLCHAIN: local
+      CGO_ENABLED: ${{ matrix.os == 'windows-11-arm' && '0' || '1' }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: Minecodex/go-inject
+          ref: 27abe60389de608a5ed5db794d31165bddad6967
+          path: .ci-tools/go-inject
       - uses: actions/setup-go@v5
         with:
-          go-version-file: go.mod
+          go-version: ${{ matrix.go }}
+          architecture: ${{ (contains(matrix.os, '-arm') || matrix.os == 'macos-15') && 'arm64' || 'x64' }}
           cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          architecture: ${{ (contains(matrix.os, '-arm') || matrix.os == 'macos-15') && 'arm64' || 'x64' }}
+      - name: Configure the native compiler
+        if: matrix.os != 'windows-11-arm'
+        run: python .ci-tools/go-inject/scripts/configure_cgo.py
       - run: go vet ./...
-      - run: go test -race -timeout=20m ./...
+      - if: matrix.os != 'windows-11-arm'
+        run: go test -race -timeout=20m ./...
+      - if: matrix.os == 'windows-11-arm'
+        run: go test -timeout=20m ./...
       - run: go build ./...
+
+  telemetry:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        family: [otelc, skywalking]
+        shard: ${{ fromJSON(inputs.full && '[0,1,2,3]' || '[0]') }}
+    defaults:
+      run:
+        working-directory: contrib
+    env:
+      GOPROXY: https://proxy.golang.org,direct
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: contrib
+      - uses: actions/checkout@v4
+        with:
+          repository: Minecodex/go-inject
+          ref: 27abe60389de608a5ed5db794d31165bddad6967
+          path: go-inject
+      - uses: actions/checkout@v4
+        with:
+          repository: apache/skywalking-go
+          ref: b52ef5762fab16d85704a7d35b8968165d351b85
+          path: skywalking-go
+      - uses: actions/checkout@v4
+        with:
+          repository: open-telemetry/opentelemetry-go-compile-instrumentation
+          ref: 70b4fe80ffb5032e6cdb79f543da5069ee4133b5
+          path: opentelemetry-go-compile-instrumentation
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: python -m pip install -r test/runner/requirements-ci.txt
+      - name: Compare actual injected telemetry with the pinned official Agent
+        env:
+          FULL: ${{ inputs.full }}
+        run: |
+          args=()
+          if [ "$FULL" = "true" ]; then args+=(--full --shards 4); fi
+          python -u test/runner/ci_ab.py --family ${{ matrix.family }} --shard ${{ matrix.shard }} "${args[@]}"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: telemetry-${{ matrix.family }}-${{ matrix.shard }}-${{ github.sha }}
+          path: contrib/test/runner/ci-*.json
 
   ci-gate:
     name: CI
     if: ${{ always() }}
-    needs: ["go"]
+    needs: ["go", "telemetry"]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
