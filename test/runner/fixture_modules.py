@@ -12,6 +12,7 @@ def diagnostic_build_script(command):
 if [ "$status" -ne 0 ]; then
   mkdir -p /ws/native-diagnostics
   cp -a /root/.cache/go-inject/native /ws/native-diagnostics/ 2>/dev/null || true
+  chmod -R a+rX /ws/native-diagnostics
   ps -eo pid,ppid,lstart,stat,comm > /ws/native-diagnostics/processes.txt
   free -m > /ws/native-diagnostics/memory.txt
   df -h > /ws/native-diagnostics/disk.txt
