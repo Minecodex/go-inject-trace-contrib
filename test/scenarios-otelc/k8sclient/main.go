@@ -98,7 +98,9 @@ func runInformer() bool {
 		informers.WithTweakListOptions(func(options *metav1.ListOptions) {
 			// Production reflectors jitter watch timeouts. Keep this fixture's
 			// real request deterministic without dropping URL attributes.
-			if options.Watch {
+			// client-go sets Watch later in its typed client, but the
+			// reflector has already supplied the randomized timeout here.
+			if options.TimeoutSeconds != nil {
 				timeout := int64(600)
 				options.TimeoutSeconds = &timeout
 			}
