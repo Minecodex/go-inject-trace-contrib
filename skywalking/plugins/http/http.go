@@ -10,6 +10,7 @@ import (
 	"os"
 	"strconv"
 
+	"github.com/apache/skywalking-go/plugins/core/operator"
 	"github.com/apache/skywalking-go/plugins/core/tracing"
 )
 
@@ -17,6 +18,7 @@ type Transport struct {
 }
 
 func (t *Transport) RoundTrip(req *Request) (resp *Response, err error) {
+	swBeforeHook := operator.NanoTime()
 	swSpan := tracing.Span(nil)
 	swHost := req.Host
 	if swHost == "" && req.URL != nil {
@@ -33,6 +35,8 @@ func (t *Transport) RoundTrip(req *Request) (resp *Response, err error) {
 		swSpan = s
 	}
 	defer func() {
+		swAfterHook := operator.NanoTime()
+		defer func() { operator.DurationOfInterceptor(operator.NanoTime() - swAfterHook) }()
 		if swSpan == nil {
 			return
 		}
@@ -47,6 +51,7 @@ func (t *Transport) RoundTrip(req *Request) (resp *Response, err error) {
 		}
 		swSpan.End()
 	}()
+	operator.DurationOfInterceptor(operator.NanoTime() - swBeforeHook)
 	return
 }
 
@@ -54,6 +59,7 @@ type ServeMux struct {
 }
 
 func (mux *ServeMux) ServeHTTP(w ResponseWriter, r *Request) {
+	swBeforeHook := operator.NanoTime()
 	swSpan := tracing.Span(nil)
 	s, swErr := tracing.CreateEntrySpan(fmt.Sprintf("%s:%s", r.Method, r.URL.Path), func(headerKey string) (string, error) {
 		return r.Header.Get(headerKey), nil
@@ -69,6 +75,8 @@ func (mux *ServeMux) ServeHTTP(w ResponseWriter, r *Request) {
 	}
 	w = &swResponseWriterWrapper{ResponseWriter: w, statusCode: StatusOK}
 	defer func() {
+		swAfterHook := operator.NanoTime()
+		defer func() { operator.DurationOfInterceptor(operator.NanoTime() - swAfterHook) }()
 		if swSpan == nil {
 			return
 		}
@@ -80,6 +88,7 @@ func (mux *ServeMux) ServeHTTP(w ResponseWriter, r *Request) {
 		}
 		swSpan.End()
 	}()
+	operator.DurationOfInterceptor(operator.NanoTime() - swBeforeHook)
 }
 
 //inject:add

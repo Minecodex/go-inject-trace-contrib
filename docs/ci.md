@@ -40,4 +40,6 @@ Kubernetes 场景使用与 client-go 对齐的固定 K3s 和有效依赖版本�
 
 SkyWalking 的普通运行时指标采集器在注册前读取 `SW_AGENT_PLUGIN_EXCLUDES`，使用上游逗号分隔、完整名称匹配的规则。排除 runtimemetrics 时不注册运行时指标或采集钩子；默认及其他插件名称仍注册完整指标。自观测场景继续要求原有九项指标合同，不通过过滤额外指标放宽验证。
 
+HTTP 插桩使用 SDK 原有 NanoTime/DurationOfInterceptor API 记录进入和退出处理的实际开销，业务请求本身的耗时不计入该直方图。自观测验收必须收到真实样本，不能只建立空指标结构。
+
 GORM 矩阵逐项使用声明的 excepted-file，版本验收文件来自同一固定上游提交；同一个版本的 A/B 使用相同合同。缺失或越界文件直接失败，不退回默认合同。官方 Collector 的错误正文也保存为失败诊断，区分插桩问题与版本合同选择问题。
