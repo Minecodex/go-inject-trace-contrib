@@ -244,6 +244,13 @@ def run_side(side, runid, ws, go, cfg):
         "SW_AGENT_REPORTER_GRPC_BACKEND_SERVICE": "oap:19877",
         **cfg.get("env", {}),
     }
+    if cfg["health"] != cfg["entry"]:
+        # The number and interim status of startup probes depend on readiness
+        # timing. Use the SDK's exact-name ignore list on both real agents;
+        # do not filter captured business telemetry in the comparator.
+        ignored = env.get("SW_AGENT_TRACE_IGNORE_PATH", "").split(",")
+        ignored.extend((cfg["health"], "GET:" + cfg["health"]))
+        env["SW_AGENT_TRACE_IGNORE_PATH"] = ",".join(dict.fromkeys(name for name in ignored if name))
     build_args = ["run", "--rm", "--init", "--name", f"{runid}-build{side}", "--network", runid,
                   "-v", f"{ws}:/ws", "-v", f"{CONTRIB}:/contrib:ro", "-v", f"{RUNNER_BIN}:/tools:ro",
                   "-v", f"{MOD_VOL}:/go/pkg/mod", "-v", f"{BUILD_VOL[go]}:/root/.cache/go-build",
