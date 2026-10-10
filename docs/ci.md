@@ -44,4 +44,6 @@ HTTP 插桩使用 SDK 原有 NanoTime/DurationOfInterceptor API 记录进入和�
 
 GORM 矩阵逐项使用声明的 excepted-file，版本验收文件来自同一固定上游提交；同一个版本的 A/B 使用相同合同。缺失或越界文件直接失败，不退回默认合同。官方 Collector 的错误正文也保存为失败诊断，区分插桩问题与版本合同选择问题。
 
+PostgreSQL dialector 与 database/sql 的连接信息使用已注入的导出元数据字段传递，避免跨包断言不存在的私有 getter/setter 导致丢失嵌套 SQL span。保留原始 db.statement 和单独的参数标签，不改写 SQL 以适配验收文件。
+
 Docker CMD 健康检查保留声明的参数边界，避免将 bash -c 的脚本拆开后让外层 sh 解释 /dev/tcp，误报 Mongo 等依赖不健康。健康失败包含实际探针输出和服务日志，不把超时当作可忽略的场景。
