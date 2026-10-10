@@ -19,6 +19,7 @@ Resource – attributes minus volatile detector output (process.*, host.*,
 """
 import json
 import sys
+from pathlib import Path
 
 VOLATILE_RESOURCE_KEYS = {
     "service.instance.id",
@@ -256,7 +257,10 @@ def main():
     if len(sys.argv) != 3:
         sys.exit("usage: normdiff_otlp.py <actualA.json> <actualB.json>")
     a, b = normalize(sys.argv[1]), normalize(sys.argv[2])
-    ok = all(diff(sig, a[sig], b[sig]) for sig in ("traces", "metrics", "logs"))
+    for original, normalized in zip(sys.argv[1:], (a, b)):
+        Path(original).with_suffix(".normalized.json").write_text(
+            json.dumps(normalized, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    ok = all([diff(sig, a[sig], b[sig]) for sig in ("traces", "metrics", "logs")])
     if ok:
         ntr = len(a["traces"])
         nme = len(a["metrics"])

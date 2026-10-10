@@ -112,7 +112,9 @@ jobs:
         if: always()
         with:
           name: telemetry-${{ matrix.family }}-${{ matrix.shard }}-${{ github.sha }}
-          path: contrib/test/runner/ci-*.json
+          path: |
+            contrib/test/runner/ci-*.json
+            contrib/test/runner/build/**/actual*.json
 
   ci-gate:
     name: CI
