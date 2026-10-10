@@ -1,6 +1,6 @@
 import unittest
 
-from fixture_modules import declared_modules, pin_declared_modules
+from fixture_modules import align_requirement_metadata, declared_modules, pin_declared_modules
 
 
 class FixtureVersionTests(unittest.TestCase):
@@ -25,6 +25,15 @@ replace github.com/kakj-go/go-inject-trace-contrib => /contrib
         modules = declared_modules("require github.com/openai/openai-go/v3 v3.53.0\n")
         self.assertIn("github.com/openai/openai-go/v3", modules)
         self.assertNotIn("github.com/openai/openai-go", modules)
+
+    def test_mvs_metadata_can_align_without_changing_effective_sdk_code(self):
+        manifest = pin_declared_modules("module fixture\nrequire example.com/sdk v2.5.0\n")
+        aligned, changes = align_requirement_metadata(manifest, "\tdep\texample.com/sdk\tv2.7.0\n\t=>\texample.com/sdk\tv2.5.0\n")
+        self.assertEqual(declared_modules(aligned)["example.com/sdk"], "v2.7.0")
+        self.assertIn("example.com/sdk => example.com/sdk v2.5.0", aligned)
+        self.assertEqual(changes[0]["effective"], "v2.5.0")
+        with self.assertRaises(ValueError):
+            align_requirement_metadata(manifest, "\tdep\texample.com/sdk\tv2.7.0\n\t=>\texample.com/sdk\tv2.6.0\n")
 
 
 if __name__ == "__main__":

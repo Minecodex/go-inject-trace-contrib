@@ -31,3 +31,5 @@ CI 失败会阻止合并。修复失败后在同一个功能分支继续提交�
 A/B 工作区固定 fixture 声明的模块版本，防止官方工具添加依赖时只升级 A 侧 SDK，导致比较不同库版本。GenAI 移植补齐真实请求 URL 的 server.address/server.port；OpenAI 的 span 与指标均携带端点，Anthropic 按固定上游只在 span 中携带，保留 SDK 原有身份和语义差异检查。
 
 构建容器通过 init 管理脱离编译器代理的子进程，并保留显式 shell 生命周期与失败前的 daemon/进程/内存诊断。指标按同一 resource/scope/instrument 的稳定合同合并导出批次，完整保留属性点与 bucket 边界；不同采样批次不产生假差异，缺少属性点或业务指标仍失败。
+
+发布制品同时记录 go version -m。官方工具可能提高 require 的 MVS 标签，实际代码仍由 replace 固定；仅在两侧有效 replacement 完全一致时，对齐候选的逻辑 require 标签，以覆盖从 BuildInfo 计算的 SDK User-Agent。不会更改实际 SDK 版本，也不会删除 User-Agent 属性比较；有效模块不同直接失败，并上传对齐记录。

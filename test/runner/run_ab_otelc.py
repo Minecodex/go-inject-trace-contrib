@@ -15,6 +15,7 @@ Usage:
   python run_ab_otelc.py --scenario ../scenarios-otelc/otelsdk [--go 1.26] [--only A|B] [--keep]
 """
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -22,7 +23,7 @@ import time
 import uuid
 
 import yaml
-from fixture_modules import declared_modules, diagnostic_build_script, pin_declared_modules
+from fixture_modules import align_requirement_metadata, declared_modules, diagnostic_build_script, pin_declared_modules
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 CONTRIB = ROOT
@@ -421,6 +422,16 @@ def main():
                 ws = os.path.join(os.path.dirname(__file__), "build",
                                   f"{os.path.basename(scenario)}-{go}-{fw}-{side}")
                 render_workspace(scenario, ws, fw)
+                if side == "B" and "A" in results and not cfg.get("build_targets"):
+                    actual_a = results["A"][0] if isinstance(results["A"], tuple) else results["A"]
+                    reference_info = os.path.join(os.path.dirname(actual_a), "actualBuildInfoA.txt")
+                    with open(reference_info, encoding="utf-8") as source:
+                        with open(os.path.join(ws, "go.mod"), encoding="utf-8") as manifest:
+                            gomod, aligned = align_requirement_metadata(manifest.read(), source.read())
+                    with open(os.path.join(ws, "go.mod"), "w", encoding="utf-8") as manifest:
+                        manifest.write(gomod)
+                    with open(os.path.join(ws, "actualModuleAlignment.json"), "w", encoding="utf-8") as report:
+                        json.dump(aligned, report, indent=2)
                 start_mock(runid)
                 try:
                     results[side] = run_side(side, runid, ws, go, cfg)
