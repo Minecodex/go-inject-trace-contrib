@@ -99,15 +99,24 @@ def ensure_tools():
                "-e", f"GOPROXY={PROXY}", "-e", "GOFLAGS=-buildvcs=false", "-w", "/src/tools/go-agent", f"golang:{go}-bookworm",
                "go", "build", "-o", "/out/skywalking-go", "./cmd")
         print("built linux skywalking-go (official agent)")
+    if not os.path.exists(os.path.join(RUNNER_BIN, "skywalking-control-rpc")):
+        docker("run", "--rm", "-v", f"{CONTRIB}:/src", "-v", f"{RUNNER_BIN}:/out",
+               "-v", f"{MOD_VOL}:/go/pkg/mod", "-e", f"GOPROXY={PROXY}",
+               "-e", "GOFLAGS=-buildvcs=false", "-w", "/src", f"golang:{go}-bookworm",
+               "go", "build", "-o", "/out/skywalking-control-rpc", "./internal/ci/controlrpc")
 
 
 def start_mock(runid):
     docker("run", "-d", "--name", f"{runid}-mock", "--network", runid,
            "--network-alias", "oap", MOCK_IMAGE)
     wait_container_http(runid, "http://oap:12800/receiveData", timeout=120)
+    docker("run", "-d", "--name", f"{runid}-control-rpc",
+           "--network", f"container:{runid}-mock", "-v", f"{RUNNER_BIN}:/tools:ro",
+           "golang:1.26-bookworm", "/tools/skywalking-control-rpc")
 
 
 def stop_mock(runid):
+    subprocess.run(["docker", "rm", "-f", f"{runid}-control-rpc"], capture_output=True)
     subprocess.run(["docker", "rm", "-f", f"{runid}-mock"], capture_output=True)
     time.sleep(1)
 
@@ -232,7 +241,7 @@ def run_side(side, runid, ws, go, cfg):
     env = {
         "GOPROXY": PROXY,
         "SW_AGENT_NAME": cfg["service"],
-        "SW_AGENT_REPORTER_GRPC_BACKEND_SERVICE": "oap:19876",
+        "SW_AGENT_REPORTER_GRPC_BACKEND_SERVICE": "oap:19877",
         **cfg.get("env", {}),
     }
     build_args = ["run", "--rm", "--init", "--name", f"{runid}-build{side}", "--network", runid,
@@ -386,6 +395,7 @@ def main():
             failures.append((go, fw, str(e)[:200]))
         finally:
             if not args.keep:
+                stop_mock(runid)
                 stop_deps(runid, cfg["deps"])
                 subprocess.run(["docker", "rm", "-f", f"{runid}-mock", f"{runid}-appA", f"{runid}-appB"],
                                capture_output=True)

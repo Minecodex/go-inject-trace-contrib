@@ -55,3 +55,5 @@ Elasticsearch v8 使用完整 /v8 模块路径，并固定每个声明单元的�
 RocketMQ 测试消息使用显式、按同步/异步/单向发送区分的业务 ID，避免框架自动生成的进程/时间 ID 使两侧本来相同的消息链路不可比。真实 broker 仍分别启动，消息 ID、broker offset ID、标签及生产者/消费者关联继续精确比较。
 
 SkyWalking 比较器读取实际 meters/logs 明细，验证指标名称、标签、类型、bucket 边界，以及日志内容、级别和 trace 关联；不会把服务包装层当成空的指标/日志。采样数值保留给官方 Collector 合同验证，框架本身的结构差异仍阻止通过。
+
+固定 Apache Mock Collector 不实现动态配置、Profile 和 Pprof 的三个后台查询 RPC。隔离测试网络中的控制网关为这些明确的查询返回合法的空 Commands，表示没有配置更新或分析任务；其余请求、响应、元数据及错误按原始 protobuf 字节转发给真正的 Collector。两侧使用同一网关，原始遥测与日志比较不删减，避免 Collector 缺失接口产生的 Agent 后台错误混入业务日志。此网关属于测试设施，不代表完整 OAP 控制平面验收。
