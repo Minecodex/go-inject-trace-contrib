@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from run_ab import expected_file
+from fixture_contracts import expected_file
 
 
 class ExpectedFixtureTests(unittest.TestCase):

@@ -25,10 +25,10 @@ import subprocess
 import sys
 import time
 import uuid
-from pathlib import Path
 
 import yaml
 from fixture_modules import diagnostic_build_script
+from fixture_contracts import expected_file
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 CONTRIB = os.environ.get("CONTRIB_DIR") or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -297,14 +297,6 @@ def run_side(side, runid, ws, go, cfg):
     finally:
         for name in [f"{runid}-build{side}"] + [f"{runid}-{side.lower()}-" + a["name"] for a in (cfg.get("apps") or [{"name": "app"}])]:
             subprocess.run(["docker", "rm", "-f", name], capture_output=True)
-
-
-def expected_file(scenario, declared="excepted.yml"):
-    root = Path(scenario).resolve()
-    path = (root / declared).resolve()
-    if not path.is_relative_to(root) or not path.is_file():
-        raise ValueError(f"declared validation fixture is missing or outside its scenario: {declared}")
-    return path.relative_to(root).as_posix()
 
 
 def main():
