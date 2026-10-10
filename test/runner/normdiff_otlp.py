@@ -187,19 +187,29 @@ def canon_metric_points(metric):
 
 
 def canon_metrics(data):
-    out = []
+    instruments = {}
     for rm in data.get("resourceMetrics") or []:
         res = canon_resource(rm.get("resource"))
         for sm in rm.get("scopeMetrics") or []:
             scope = ((sm.get("scope") or {}).get("name")) or ""
             for m in sm.get("metrics") or []:
-                out.append({
+                instrument = {
                     "resource": res,
                     "scope": scope,
                     "name": m.get("name", ""),
                     "unit": m.get("unit", ""),
                     "metric": canon_metric_points(m),
-                })
+                }
+                points = instrument["metric"].pop("points", [])
+                key = canon_key(instrument)
+                entry = instruments.setdefault(key, {"instrument": instrument, "points": {}})
+                for point in points:
+                    entry["points"][canon_key(point)] = point
+    out = []
+    for entry in instruments.values():
+        instrument = entry["instrument"]
+        instrument["metric"]["points"] = [entry["points"][key] for key in sorted(entry["points"])]
+        out.append(instrument)
     out.sort(key=canon_key)
     return out
 

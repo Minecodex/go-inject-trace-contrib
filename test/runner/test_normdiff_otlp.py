@@ -1,6 +1,6 @@
 import unittest
 
-from normdiff_otlp import canon_traces
+from normdiff_otlp import canon_metrics, canon_traces
 
 
 def payload(path, sdk_name="opentelemetry"):
@@ -22,6 +22,18 @@ class TelemetryNormalizationTests(unittest.TestCase):
 
     def test_stable_sdk_metadata_is_not_normalized_away(self):
         self.assertNotEqual(canon_traces(payload("/hello")), canon_traces(payload("/hello", "different-sdk")))
+
+    def test_export_batch_boundaries_do_not_change_instrument_contracts(self):
+        def metric(points):
+            return {"resourceMetrics": [{"scopeMetrics": [{"scope": {"name": "sdk"}, "metrics": [{
+                "name": "memory", "unit": "By", "gauge": {"dataPoints": [
+                    {"attributes": [{"key": "type", "value": {"stringValue": value}}]} for value in points
+                ]},
+            }]}]}]}
+        combined = metric(["heap", "stack"])
+        separated = {"resourceMetrics": metric(["heap"])["resourceMetrics"] + metric(["stack"])["resourceMetrics"]}
+        self.assertEqual(canon_metrics(combined), canon_metrics(separated))
+        self.assertNotEqual(canon_metrics(combined), canon_metrics(metric(["heap"])))
 
 
 if __name__ == "__main__":
