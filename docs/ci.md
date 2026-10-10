@@ -35,3 +35,5 @@ A/B 工作区固定 fixture 声明的模块版本，防止官方工具添加依�
 发布制品同时记录 go version -m。官方工具可能提高 require 的 MVS 标签，实际代码仍由 replace 固定；仅在两侧有效 replacement 完全一致时，对齐候选的逻辑 require 标签，以覆盖从 BuildInfo 计算的 SDK User-Agent。不会更改实际 SDK 版本，也不会删除 User-Agent 属性比较；有效模块不同直接失败，并上传对齐记录。
 
 Kubernetes 场景使用与 client-go 对齐的固定 K3s 和有效依赖版本，将实际客户端使用的 k3s-server DNS 别名加入服务证书 SAN，保持完整证书校验。必须成功导入实际 Pod 镜像，并收到创建、指定标签更新与删除事件才进入健康状态。Informer 启动有明确预算；清理先关闭 stop channel 再调用等待退出的 Shutdown，避免事件完成后仍永久阻塞；异常初始化不能以空遥测或健康返回代替验收。
+
+双侧独立集群采用相同 Node 名称和固定 watch 预算，保留这些属性及完整 URL 比较。Pod UID 由各自真实 API 分配，程序输出独立的身份收据；比较器只映射与该收据精确相同的 k8s.pod.uid。缺少 UID、归属错误或试图映射 SDK 等稳定属性仍会失败，原始 OTLP、身份收据与归一化数据分别保存。批处理插桩补齐 codes 导入，错误状态继续与固定上游一致。

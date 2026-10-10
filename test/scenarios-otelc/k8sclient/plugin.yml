@@ -2,10 +2,11 @@ service: k8sclient
 entry: /health
 health: /health
 port: 8080
+fixture_identity: k8s-pod-uid
 dependencies:
   k3s-server:
     image: rancher/k3s:v1.35.0-k3s1@sha256:10464930d9bad0c06aef9830e84cd4019c24ed44d5eab594efb7416119097248
-    command: server --disable traefik --disable servicelb --pause-image registry.k8s.io/pause:3.10 --tls-san k3s-server
+    command: server --disable traefik --disable servicelb --pause-image registry.k8s.io/pause:3.10 --tls-san k3s-server --node-name k3s-server
     hostname: k3s-server
     privileged: true
     environment:

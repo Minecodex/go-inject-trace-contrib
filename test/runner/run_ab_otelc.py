@@ -17,6 +17,7 @@ Usage:
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -361,6 +362,13 @@ def run_side(side, runid, ws, go, cfg):
         out = os.path.join(ws, f"actual{side}.json")
         with open(out, "w", encoding="utf-8", newline="\n") as f:
             f.write(actual)
+        if cfg.get("fixture_identity") == "k8s-pod-uid":
+            logs = docker("logs", entry_name).stdout
+            receipts = [line.removeprefix("OTELC_FIXTURE_IDENTITY=") for line in logs.splitlines() if line.startswith("OTELC_FIXTURE_IDENTITY=")]
+            if len(receipts) != 1 or not re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", receipts[0]):
+                raise RuntimeError("Kubernetes fixture must report exactly one actual API-assigned Pod UID")
+            with open(os.path.join(ws, f"actualFixtureIdentity{side}.json"), "w", encoding="utf-8") as receipt:
+                json.dump({"k8s.pod.uid": receipts[0]}, receipt)
         # Log-instrumentation scenarios verify trace_id injection by diffing
         # the app's stdout (normalized) — the log bridges write to library
         # output, not OTLP.
@@ -413,6 +421,7 @@ def main():
         "app_script": meta.get("app_script", ""),
         "entry_app": meta.get("entry_app", "app"),
         "compare_stdout": meta.get("compare_stdout", False),
+        "fixture_identity": meta.get("fixture_identity", ""),
     }
     cells = []
     for row in meta["support-version"]:

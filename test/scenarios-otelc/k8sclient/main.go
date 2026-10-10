@@ -95,6 +95,14 @@ func runInformer() bool {
 		clientset,
 		0,
 		informers.WithNamespace(corev1.NamespaceDefault),
+		informers.WithTweakListOptions(func(options *metav1.ListOptions) {
+			// Production reflectors jitter watch timeouts. Keep this fixture's
+			// real request deterministic without dropping URL attributes.
+			if options.Watch {
+				timeout := int64(600)
+				options.TimeoutSeconds = &timeout
+			}
+		}),
 	)
 	defer func() {
 		// Shutdown waits for the informer goroutines; stop them first.
@@ -175,11 +183,14 @@ func runInformer() bool {
 	}
 
 	// create a pod
-	_, err = clientset.CoreV1().Pods(corev1.NamespaceDefault).Create(ctx, &pod, metav1.CreateOptions{})
+	created, err := clientset.CoreV1().Pods(corev1.NamespaceDefault).Create(ctx, &pod, metav1.CreateOptions{})
 	if err != nil {
 		log.Printf("Failed to create pod: %v", err)
 		return false
 	}
+	// The API-assigned identity is independent of the instrumentation. The
+	// comparer may map only this exact value across the two fresh clusters.
+	fmt.Printf("OTELC_FIXTURE_IDENTITY=%s\n", created.UID)
 
 	select {
 	case <-addedCh:
