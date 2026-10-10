@@ -77,6 +77,14 @@ func TestProCon() {
 	}
 }
 
+func fixtureMessage(mode, index int) *primitive.Message {
+	message := primitive.NewMessage(topic, []byte(fmt.Sprintf(msg, strconv.Itoa(index))))
+	// Client-generated IDs include process/time bytes. Give corresponding
+	// real A/B messages the same distinct business identity instead.
+	message.WithProperty(primitive.PropertyUniqueClientMessageIdKeyIndex, fmt.Sprintf("%032x", mode*16+index))
+	return message
+}
+
 func sendSyncMsg() error {
 	p, err := rocketmq.NewProducer(
 		producer.WithNsResolver(primitive.NewPassthroughResolver([]string{uri})),
@@ -94,10 +102,7 @@ func sendSyncMsg() error {
 	}
 	var msgs []*primitive.Message
 	for i := 1; i < 2; i++ {
-		msgs = append(msgs, primitive.NewMessage(
-			topic,
-			[]byte(fmt.Sprintf(msg, strconv.Itoa(i)))),
-		)
+		msgs = append(msgs, fixtureMessage(1, i))
 	}
 
 	res, err := p.SendSync(context.Background(), msgs...)
@@ -143,7 +148,7 @@ func sendAsyncMsg() error {
 					fmt.Printf("send message success: result=%s\n", result.String())
 				}
 				wg.Done()
-			}, primitive.NewMessage(topic, []byte(fmt.Sprintf(msg, strconv.Itoa(i)))))
+			}, fixtureMessage(2, i))
 
 		if err != nil {
 			fmt.Printf("send message error: %s\n", err)
@@ -177,10 +182,7 @@ func sendOneWayMsg() error {
 	}
 	var msgs []*primitive.Message
 	for i := 1; i < 2; i++ {
-		msgs = append(msgs, primitive.NewMessage(
-			topic,
-			[]byte(fmt.Sprintf(msg, strconv.Itoa(i)))),
-		)
+		msgs = append(msgs, fixtureMessage(3, i))
 	}
 	err = p.SendOneWay(context.Background(), msgs...)
 	if err != nil {
