@@ -22,12 +22,16 @@ def main() -> None:
         parser.error("shard must belong to the declared nonempty shard range")
     here = Path(__file__).resolve().parent
     names = run_all_otelc.ORDER if args.family == "otelc" else run_all.ORDER
+    directory = "scenarios-otelc" if args.family == "otelc" else "scenarios"
+    if args.full:
+        actual = {p.parent.name for p in (here.parent / directory).glob("*/plugin.yml")}
+        if actual != set(names):
+            raise SystemExit(f"scenario catalog drift: missing={set(names)-actual}, unregistered={actual-set(names)}")
     if not args.full:
         names = ["httpserver", "grpcserver"] if args.family == "otelc" else ["http", "cross-goroutine"]
     names = names[args.shard::args.shards]
     if not names:
         raise SystemExit("an empty acceptance shard cannot pass")
-    directory = "scenarios-otelc" if args.family == "otelc" else "scenarios"
     runner = "run_ab_otelc.py" if args.family == "otelc" else "run_ab.py"
     results = []
     for name in names:

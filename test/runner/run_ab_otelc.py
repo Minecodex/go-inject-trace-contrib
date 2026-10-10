@@ -37,7 +37,12 @@ BUILD_VOL = {v: f"abcache{v.replace('.', '')}" for v in ("1.24", "1.25", "1.26",
 
 def sh(*args, **kw):
     print("+", " ".join(args))
-    return subprocess.run(args, check=True, capture_output=True, text=True, **kw)
+    result = subprocess.run(args, check=False, capture_output=True, text=True, **kw)
+    if result.returncode:
+        print(result.stdout, file=sys.stderr)
+        print(result.stderr, file=sys.stderr)
+    result.check_returncode()
+    return result
 
 
 def docker(*args, **kw):
@@ -105,19 +110,19 @@ def ensure_tools():
     if not os.path.exists(os.path.join(RUNNER_BIN, "go-inject")):
         docker("run", "--rm",
                "-v", f"{GO_INJECT_REPO}:/src", "-v", f"{RUNNER_BIN}:/out", "-v", f"{MOD_VOL}:/go/pkg/mod",
-               "-e", f"GOPROXY={PROXY}", "-w", "/src", f"golang:{go}-bookworm",
+               "-e", f"GOPROXY={PROXY}", "-e", "GOFLAGS=-buildvcs=false", "-w", "/src", f"golang:{go}-bookworm",
                "go", "build", "-o", "/out/go-inject", "./cmd/go-inject")
         print("built linux go-inject")
     if not os.path.exists(os.path.join(RUNNER_BIN, "otelc")):
         docker("run", "--rm",
                "-v", f"{OTELC_REPO}:/src", "-v", f"{RUNNER_BIN}:/out", "-v", f"{MOD_VOL}:/go/pkg/mod",
-               "-e", f"GOPROXY={PROXY}", "-w", "/src", f"golang:{go}-bookworm",
+               "-e", f"GOPROXY={PROXY}", "-e", "GOFLAGS=-buildvcs=false", "-w", "/src", f"golang:{go}-bookworm",
                "go", "build", "-o", "/out/otelc", "./tool/cmd/otelc")
         print("built linux otelc (official, from local clone)")
     if not os.path.exists(os.path.join(RUNNER_BIN, "mockcol")):
         docker("run", "--rm",
                "-v", f"{MOCKCOL_SRC}:/src", "-v", f"{RUNNER_BIN}:/out", "-v", f"{MOD_VOL}:/go/pkg/mod",
-               "-e", f"GOPROXY={PROXY}", "-w", "/src", f"golang:{go}-bookworm",
+               "-e", f"GOPROXY={PROXY}", "-e", "GOFLAGS=-buildvcs=false", "-w", "/src", f"golang:{go}-bookworm",
                "go", "build", "-o", "/out/mockcol", ".")
         print("built linux mockcol")
 
