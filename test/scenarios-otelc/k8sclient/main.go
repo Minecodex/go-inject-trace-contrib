@@ -150,7 +150,9 @@ func runInformer() bool {
 
 	factory.Start(stopCh)
 
-	if !cache.WaitForCacheSync(stopCh, podInformer.Informer().HasSynced) {
+	syncContext, cancelSync := context.WithTimeout(context.Background(), eventTimeout)
+	defer cancelSync()
+	if !cache.WaitForCacheSync(syncContext.Done(), podInformer.Informer().HasSynced) {
 		log.Print("Failed to wait for caches to sync")
 		return false
 	}
