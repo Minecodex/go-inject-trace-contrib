@@ -59,3 +59,5 @@ SkyWalking 比较器读取实际 meters/logs 明细，验证指标名称、标�
 固定 Apache Mock Collector 不实现动态配置、Profile 和 Pprof 的三个后台查询 RPC。隔离测试网络中的控制网关为这些明确的查询返回合法的空 Commands，表示没有配置更新或分析任务；其余请求、响应、元数据及错误按原始 protobuf 字节转发给真正的 Collector。两侧使用同一网关，原始遥测与日志比较不删减，避免 Collector 缺失接口产生的 Agent 后台错误混入业务日志。此网关属于测试设施，不代表完整 OAP 控制平面验收。
 
 SkyWalking 两侧使用 SDK 原有的精确路径忽略配置排除 fixture 启动探针；只加入声明的 health 路径和 GET 操作名，保留 fixture 原有忽略项。health 与业务入口相同时不排除。Kratos 冷启动的临时 500 探针次数不再随两侧就绪时机改变比较结果；业务 span、状态、标签、指标和日志仍由原比较器和官方合同验证。
+
+Kratos 入口在 AfterStart 中等待真实 gRPC 连接进入 Ready 后才监听外部端口；就绪等待有 30 秒预算，失败直接终止。不会在连接仍处于 Idle/Connecting 时开放业务入口，也不靠健康探针尝试次数判断 A/B 差异。

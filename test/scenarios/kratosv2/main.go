@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"log"
 	nativeHTTP "net/http"
+	"time"
 
 	nativeGRPC "google.golang.org/grpc"
 	"google.golang.org/grpc/connectivity"
@@ -102,7 +103,15 @@ func main() {
 	app := kratos.New(
 		kratos.Name("krago-test"),
 		kratos.Server(httpSvr, grpcSvr),
-		kratos.AfterStart(func(context.Context) error {
+		kratos.AfterStart(func(ctx context.Context) error {
+			ready, cancel := context.WithTimeout(ctx, 30*time.Second)
+			defer cancel()
+			grpcDial.Connect()
+			for state := grpcDial.GetState(); state != connectivity.Ready; state = grpcDial.GetState() {
+				if !grpcDial.WaitForStateChange(ready, state) {
+					return fmt.Errorf("gRPC fixture did not become ready: %w", ready.Err())
+				}
+			}
 			return nativeHTTP.ListenAndServe(":8080", nil)
 		}),
 	)
