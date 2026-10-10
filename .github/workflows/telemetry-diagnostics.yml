@@ -83,4 +83,5 @@ jobs:
             contrib/test/runner/build/**/actual*.yaml
             contrib/test/runner/build/**/native-diagnostics/**
             contrib/test/runner/build/**/go.mod
+            contrib/test/runner/build/**/actualBuildInfo*.txt
           if-no-files-found: warn

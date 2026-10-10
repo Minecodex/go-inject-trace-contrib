@@ -286,6 +286,8 @@ def run_side(side, runid, ws, go, cfg):
             build_cmds.append(f"/tools/otelc go build -mod=mod -o /ws/{target['out']} /ws/{target['pkg']}")
         else:
             build_cmds.append(f"go build -mod=mod -toolexec /tools/go-inject -o /ws/{target['out']} /ws/{target['pkg']}")
+    if not cfg.get("build_targets"):
+        build_cmds.append(f"go version -m /ws/app > /ws/actualBuildInfo{side}.txt")
 
     env = {"GOPROXY": PROXY, "GOFLAGS": "-mod=mod", **otel_env(cfg), **cfg.get("env", {})}
     if os.environ.get("OTELC_KUBECONFIG"):
