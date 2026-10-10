@@ -7,7 +7,9 @@ package runtimemetrics
 
 import (
 	"math"
+	"os"
 	original_metrics "runtime/metrics"
+	"strings"
 
 	"github.com/apache/skywalking-go/plugins/core/metrics"
 
@@ -82,6 +84,14 @@ func init() {
 
 // nolint
 func registerMetrics() {
+	// This collector is a regular package, so it must honor the configured
+	// plugin exclusion before registering any runtime instruments or hooks.
+	// Keep the upstream comma-separated, exact-name matching semantics.
+	for _, excluded := range strings.Split(os.Getenv("SW_AGENT_PLUGIN_EXCLUDES"), ",") {
+		if excluded == "runtimemetrics" {
+			return
+		}
+	}
 	allMetrics := original_metrics.All()
 	samples := make([]original_metrics.Sample, 0)
 	infos := make(map[string]*meterInfo)

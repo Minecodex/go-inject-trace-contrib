@@ -6,10 +6,16 @@ dependencies:
   elasticsearch:
     image: elasticsearch:8.13.4
     hostname: elasticsearch
+    environment:
+      ES_JAVA_OPTS: '-Xms512m -Xmx512m'
     ports:
     - 9200
     volumes:
-    - ./config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+    - ./config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml:ro
+    healthcheck:
+      test: [CMD-SHELL, 'curl --fail --silent http://127.0.0.1:9200/_cluster/health']
+      interval: 5s
+      retries: 60
 support-version:
 - go: '1.25'
   framework:

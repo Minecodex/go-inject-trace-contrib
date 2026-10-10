@@ -4,10 +4,9 @@ go 1.19
 
 require (
 	github.com/elastic/elastic-transport-go/v8 v8.3.0 // indirect
-	github.com/elastic/go-elasticsearch/v8 v8.11.1 // indirect
+	github.com/elastic/go-elasticsearch/v8 {{FRAMEWORK_VERSION}}
 )
 
-require github.com/elastic/go-elasticsearch {{FRAMEWORK_VERSION}}
 require (
 	github.com/apache/skywalking-go v0.7.0
 	github.com/kakj-go/go-inject-trace-contrib v0.0.0
@@ -15,7 +14,6 @@ require (
 	dubbo.apache.org/dubbo-go/v3 v3.0.1
 	github.com/apache/pulsar-client-go v0.12.0
 	github.com/apache/rocketmq-client-go/v2 v2.1.2
-	github.com/elastic/go-elasticsearch/v8 v8.11.1
 	github.com/emicklei/go-restful/v3 v3.10.2
 	github.com/go-kratos/kratos/v2 v2.6.2
 	github.com/go-sql-driver/mysql v1.7.1
@@ -39,6 +37,7 @@ require (
 )
 
 replace github.com/kakj-go/go-inject-trace-contrib => /contrib
+replace github.com/elastic/go-elasticsearch/v8 => github.com/elastic/go-elasticsearch/v8 {{FRAMEWORK_VERSION}}
 replace golang.org/x/net => golang.org/x/net v0.33.0
 replace golang.org/x/crypto => golang.org/x/crypto v0.31.0
 replace golang.org/x/sys => golang.org/x/sys v0.28.0

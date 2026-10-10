@@ -1,0 +1,16 @@
+name: Release acceptance
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    branches: [master]
+    types: [labeled, synchronize, reopened]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  complete:
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'ci:release')
+    uses: ./.github/workflows/ci.yml
+    with:
+      full: true

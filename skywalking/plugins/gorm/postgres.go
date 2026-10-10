@@ -4,6 +4,8 @@
 package gorm
 
 import (
+	"reflect"
+
 	"github.com/jackc/pgx/v5"
 	"gorm.io/gorm"
 
@@ -59,18 +61,19 @@ func (dialector Dialector) Initialize(db *gorm.DB) (err error) {
 		if db == nil || db.ConnPool == nil {
 			return
 		}
-		connPool, ok := db.ConnPool.(swEnhancedInstance)
-		if !ok || connPool == nil {
+		pool := reflect.ValueOf(db.ConnPool)
+		if pool.Kind() != reflect.Ptr || pool.IsNil() || pool.Elem().Kind() != reflect.Struct {
 			return
 		}
-		if connPool.swGetSkywalkingData() != nil {
+		field := pool.Elem().FieldByName("SwSkywalkingData")
+		if !field.IsValid() || field.Kind() != reflect.Interface || !field.CanSet() || !field.IsNil() {
 			return
 		}
 		dbInfo := swBuildDBInfoFromInvocation(dialector)
 		if dbInfo == nil {
 			return
 		}
-		connPool.swSetSkywalkingData(dbInfo)
+		field.Set(reflect.ValueOf(dbInfo))
 	}()
 	return
 }
@@ -78,12 +81,6 @@ func (dialector Dialector) Initialize(db *gorm.DB) (err error) {
 //inject:add
 func (c *Config) swGetSkywalkingData() interface{} {
 	return c.SwSkywalkingData
-}
-
-//inject:add
-type swEnhancedInstance interface {
-	swGetSkywalkingData() interface{}
-	swSetSkywalkingData(interface{})
 }
 
 //inject:add
@@ -169,11 +166,15 @@ func swBuildPeerAddress(cfg *pgx.ConnConfig) string {
 
 //inject:add
 func swBuildDBInfoFromConn(conn interface{}) *swDatabaseInfo {
-	ins, ok := conn.(swEnhancedInstance)
-	if !ok || ins == nil {
+	pool := reflect.ValueOf(conn)
+	if pool.Kind() != reflect.Ptr || pool.IsNil() || pool.Elem().Kind() != reflect.Struct {
 		return nil
 	}
-	return swAdaptSQLDatabaseInfo(ins.swGetSkywalkingData())
+	field := pool.Elem().FieldByName("SwSkywalkingData")
+	if !field.IsValid() || !field.CanInterface() {
+		return nil
+	}
+	return swAdaptSQLDatabaseInfo(field.Interface())
 }
 
 //inject:add

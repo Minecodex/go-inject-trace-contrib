@@ -105,6 +105,7 @@ func AnthropicMiddleware(scope string) func(*http.Request, func(*http.Request) (
 			attrStr(GenAIProviderNameKey, provider),
 		}
 		spanAttrs = append(baseAttrs, spanAttrs...)
+		spanAttrs = append(spanAttrs, endpointAttrs(req.URL)...)
 
 		ctx := req.Context()
 		ctx, span := state.tracer.Start(ctx, spanName,

@@ -16,6 +16,7 @@ package cache
 import (
 	"context"
 
+	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 
 	hooksupport "github.com/kakj-go/go-inject-trace-contrib/otelc/hooksupport"

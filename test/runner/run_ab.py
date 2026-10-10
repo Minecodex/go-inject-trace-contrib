@@ -20,12 +20,15 @@ import argparse
 import json
 import os
 import shutil
+import shlex
 import subprocess
 import sys
 import time
 import uuid
 
 import yaml
+from fixture_modules import diagnostic_build_script
+from fixture_contracts import expected_file
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 CONTRIB = os.environ.get("CONTRIB_DIR") or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -41,7 +44,12 @@ BUILD_VOL = {v: f"abcache{v.replace('.', '')}" for v in ("1.24", "1.25", "1.26",
 
 def sh(*args, **kw):
     print("+", " ".join(args))
-    return subprocess.run(args, check=True, capture_output=True, text=True, **kw)
+    result = subprocess.run(args, check=False, capture_output=True, text=True, **kw)
+    if result.returncode:
+        print(result.stdout, file=sys.stderr)
+        print(result.stderr, file=sys.stderr)
+    result.check_returncode()
+    return result
 
 
 def docker(*args, **kw):
@@ -82,29 +90,38 @@ def ensure_tools():
     if not os.path.exists(os.path.join(RUNNER_BIN, "go-inject")):
         docker("run", "--rm",
                "-v", f"{GO_INJECT_REPO}:/src", "-v", f"{RUNNER_BIN}:/out", "-v", f"{MOD_VOL}:/go/pkg/mod",
-               "-e", f"GOPROXY={PROXY}", "-w", "/src", f"golang:{go}-bookworm",
+               "-e", f"GOPROXY={PROXY}", "-e", "GOFLAGS=-buildvcs=false", "-w", "/src", f"golang:{go}-bookworm",
                "go", "build", "-o", "/out/go-inject", "./cmd/go-inject")
         print("built linux go-inject")
     if not os.path.exists(os.path.join(RUNNER_BIN, "skywalking-go")):
         docker("run", "--rm",
                "-v", f"{SKYWALKING_REPO}:/src", "-v", f"{RUNNER_BIN}:/out", "-v", f"{MOD_VOL}:/go/pkg/mod",
-               "-e", f"GOPROXY={PROXY}", "-w", "/src/tools/go-agent", f"golang:{go}-bookworm",
+               "-e", f"GOPROXY={PROXY}", "-e", "GOFLAGS=-buildvcs=false", "-w", "/src/tools/go-agent", f"golang:{go}-bookworm",
                "go", "build", "-o", "/out/skywalking-go", "./cmd")
         print("built linux skywalking-go (official agent)")
+    if not os.path.exists(os.path.join(RUNNER_BIN, "skywalking-control-rpc")):
+        docker("run", "--rm", "-v", f"{CONTRIB}:/src", "-v", f"{RUNNER_BIN}:/out",
+               "-v", f"{MOD_VOL}:/go/pkg/mod", "-e", f"GOPROXY={PROXY}",
+               "-e", "GOFLAGS=-buildvcs=false", "-w", "/src", f"golang:{go}-bookworm",
+               "go", "build", "-o", "/out/skywalking-control-rpc", "./internal/ci/controlrpc")
 
 
 def start_mock(runid):
     docker("run", "-d", "--name", f"{runid}-mock", "--network", runid,
            "--network-alias", "oap", MOCK_IMAGE)
     wait_container_http(runid, "http://oap:12800/receiveData", timeout=120)
+    docker("run", "-d", "--name", f"{runid}-control-rpc",
+           "--network", f"container:{runid}-mock", "-v", f"{RUNNER_BIN}:/tools:ro",
+           "golang:1.26-bookworm", "/tools/skywalking-control-rpc")
 
 
 def stop_mock(runid):
+    subprocess.run(["docker", "rm", "-f", f"{runid}-control-rpc"], capture_output=True)
     subprocess.run(["docker", "rm", "-f", f"{runid}-mock"], capture_output=True)
     time.sleep(1)
 
 
-def start_deps(runid, deps):
+def start_deps(runid, deps, scenario):
     """Start scenario dependency services declared in plugin.yml."""
     remaining = dict(deps)
     started = []
@@ -121,12 +138,19 @@ def start_deps(runid, deps):
                 args += ["--network-alias", hostname]
             hc = dep.get("healthcheck") or {}
             if hc.get("test"):
-                cmd = " ".join(hc["test"][1:]) if hc["test"][0] == "CMD" else hc["test"][-1]
+                cmd = shlex.join(hc["test"][1:]) if hc["test"][0] == "CMD" else hc["test"][-1]
                 args += ["--health-cmd", cmd,
                          "--health-interval", hc.get("interval", "5s"),
                          "--health-retries", str(hc.get("retries", 60))]
             for k, v in (dep.get("environment") or {}).items():
                 args += ["-e", f"{k}={v}"]
+            for volume in dep.get("volumes", []):
+                source, destination, *options = volume.split(":")
+                source_path = os.path.realpath(os.path.join(scenario, source))
+                if os.path.commonpath([scenario, source_path]) != scenario or not os.path.isfile(source_path):
+                    raise ValueError(f"dependency configuration must be an existing scenario file: {source}")
+                mode = ":" + ":".join(options) if options else ""
+                args += ["-v", f"{source_path}:{destination}{mode}"]
             args.append(dep["image"])
             # compose-style `command:` overrides the image CMD (words appended
             # after the image name); needed by images with no default server
@@ -161,7 +185,9 @@ def wait_healthy(container, timeout):
         if out == "healthy":
             return
         time.sleep(3)
-    raise TimeoutError(f"{container} not healthy after {timeout}s")
+    health = subprocess.run(["docker", "inspect", "-f", "{{json .State.Health}}", container], capture_output=True, text=True)
+    logs = subprocess.run(["docker", "logs", "--tail", "30", container], capture_output=True, text=True)
+    raise TimeoutError(f"{container} not healthy after {timeout}s:\n{health.stdout}\n{logs.stdout}{logs.stderr}")
 
 
 def wait_container_http(runid, url, timeout):
@@ -215,16 +241,17 @@ def run_side(side, runid, ws, go, cfg):
     env = {
         "GOPROXY": PROXY,
         "SW_AGENT_NAME": cfg["service"],
-        "SW_AGENT_REPORTER_GRPC_BACKEND_SERVICE": "oap:19876",
+        "SW_AGENT_REPORTER_GRPC_BACKEND_SERVICE": "oap:19877",
         **cfg.get("env", {}),
     }
-    build_args = ["run", "--rm", "--name", f"{runid}-build{side}", "--network", runid,
+    build_args = ["run", "--rm", "--init", "--name", f"{runid}-build{side}", "--network", runid,
                   "-v", f"{ws}:/ws", "-v", f"{CONTRIB}:/contrib:ro", "-v", f"{RUNNER_BIN}:/tools:ro",
                   "-v", f"{MOD_VOL}:/go/pkg/mod", "-v", f"{BUILD_VOL[go]}:/root/.cache/go-build",
                   "-w", "/ws"]
     for k, v in env.items():
         build_args += ["-e", f"{k}={v}"]
     script = "cd /ws && go mod download && " + " && ".join(build_cmds)
+    script = diagnostic_build_script(script)
     build_args += [f"golang:{go}-bookworm", "bash", "-c", script]
     try:
         r = subprocess.run(["docker", *build_args], capture_output=True, text=True)
@@ -268,12 +295,19 @@ def run_side(side, runid, ws, go, cfg):
         with open(out, "w", encoding="utf-8", newline="\n") as f:
             f.write(actual)
         v = subprocess.run(["docker", "run", "--rm", "--network", runid,
-                            "-v", f"{cfg['scenario']}:/scn:ro", CURL_IMAGE, "-s", "-o", "/dev/null",
-                            "-w", "%{http_code}", "-X", "POST",
-                            "--data-binary", "@/scn/excepted.yml",
+                            "-v", f"{cfg['scenario']}:/scn:ro", CURL_IMAGE, "-s",
+                            "-w", "\n%{http_code}", "-X", "POST",
+                            "--data-binary", f"@/scn/{cfg['validation_file']}",
                             "http://oap:12800/dataValidate"], capture_output=True, text=True)
-        print(f"[{side}] excepted.yml validate -> HTTP {v.stdout.strip()} {v.stderr.strip()}")
-        if v.stdout.strip() != "200":
+        validation_body, _, validation_status = v.stdout.rpartition("\n")
+        validation_status = validation_status.strip()
+        print(f"[{side}] excepted.yml validate -> HTTP {validation_status} {v.stderr.strip()}")
+        if validation_status != "200":
+            diagnostics = os.path.join(ws, "native-diagnostics")
+            os.makedirs(diagnostics, exist_ok=True)
+            with open(os.path.join(diagnostics, f"validation{side}.txt"), "w", encoding="utf-8") as report:
+                report.write(validation_body + v.stderr)
+            print(validation_body, file=sys.stderr)
             raise RuntimeError(f"{side} failed excepted.yml validation")
         return out
     finally:
@@ -318,12 +352,13 @@ def main():
                 continue
             if float(go) < float(args.min_go):
                 continue
-            cells.append((go, fw))
+            cells.append((go, fw, expected_file(scenario, row.get("excepted-file", "excepted.yml"))))
     if not cells:
         sys.exit("no matrix cell selected")
 
     failures = []
-    for go, fw in cells:
+    for go, fw, validation_file in cells:
+        cfg["validation_file"] = validation_file
         runid = f"ab{uuid.uuid4().hex[:8]}"
         base_ws = os.path.join(os.path.dirname(__file__), "build",
                                f"{os.path.basename(scenario)}-{go}-{fw}")
@@ -343,7 +378,7 @@ def main():
                 ws = base_ws + side
                 render_workspace(scenario, ws, fw)
                 stop_deps(runid, cfg["deps"])
-                start_deps(runid, cfg["deps"])
+                start_deps(runid, cfg["deps"], scenario)
                 start_mock(runid)
                 results[side] = run_side(side, runid, ws, go, cfg)
                 stop_mock(runid)
@@ -360,6 +395,7 @@ def main():
             failures.append((go, fw, str(e)[:200]))
         finally:
             if not args.keep:
+                stop_mock(runid)
                 stop_deps(runid, cfg["deps"])
                 subprocess.run(["docker", "rm", "-f", f"{runid}-mock", f"{runid}-appA", f"{runid}-appB"],
                                capture_output=True)

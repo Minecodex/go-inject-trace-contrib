@@ -15,13 +15,17 @@ Usage:
   python run_ab_otelc.py --scenario ../scenarios-otelc/otelsdk [--go 1.26] [--only A|B] [--keep]
 """
 import argparse
+import json
 import os
+import re
+import shlex
 import subprocess
 import sys
 import time
 import uuid
 
 import yaml
+from fixture_modules import align_requirement_metadata, declared_modules, diagnostic_build_script, pin_declared_modules
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 CONTRIB = ROOT
@@ -37,7 +41,12 @@ BUILD_VOL = {v: f"abcache{v.replace('.', '')}" for v in ("1.24", "1.25", "1.26",
 
 def sh(*args, **kw):
     print("+", " ".join(args))
-    return subprocess.run(args, check=True, capture_output=True, text=True, **kw)
+    result = subprocess.run(args, check=False, capture_output=True, text=True, **kw)
+    if result.returncode:
+        print(result.stdout, file=sys.stderr)
+        print(result.stderr, file=sys.stderr)
+    result.check_returncode()
+    return result
 
 
 def docker(*args, **kw):
@@ -75,7 +84,8 @@ OTELC_SDK_REQUIRES = [
 
 
 def append_sdk_requires(gomod):
-    missing = [r for r in OTELC_SDK_REQUIRES if r.split()[0] not in gomod]
+    present = declared_modules(gomod)
+    missing = [r for r in OTELC_SDK_REQUIRES if r.split()[0] not in present]
     if not missing:
         return gomod
     block = "\nrequire (\n" + "\n".join(f"\t{r} // indirect" for r in missing) + "\n)\n"
@@ -93,6 +103,7 @@ def render_workspace(scenario, out, framework=""):
     with open(os.path.join(scenario, "go.mod.tpl"), encoding="utf-8") as f:
         gomod = f.read()
     gomod = gomod.replace("{{FRAMEWORK_VERSION}}", framework)
+    gomod = pin_declared_modules(gomod)
     gomod = append_sdk_requires(gomod)
     with open(os.path.join(out, "go.mod"), "w", encoding="utf-8", newline="\n") as f:
         f.write(gomod)
@@ -105,19 +116,19 @@ def ensure_tools():
     if not os.path.exists(os.path.join(RUNNER_BIN, "go-inject")):
         docker("run", "--rm",
                "-v", f"{GO_INJECT_REPO}:/src", "-v", f"{RUNNER_BIN}:/out", "-v", f"{MOD_VOL}:/go/pkg/mod",
-               "-e", f"GOPROXY={PROXY}", "-w", "/src", f"golang:{go}-bookworm",
+               "-e", f"GOPROXY={PROXY}", "-e", "GOFLAGS=-buildvcs=false", "-w", "/src", f"golang:{go}-bookworm",
                "go", "build", "-o", "/out/go-inject", "./cmd/go-inject")
         print("built linux go-inject")
     if not os.path.exists(os.path.join(RUNNER_BIN, "otelc")):
         docker("run", "--rm",
                "-v", f"{OTELC_REPO}:/src", "-v", f"{RUNNER_BIN}:/out", "-v", f"{MOD_VOL}:/go/pkg/mod",
-               "-e", f"GOPROXY={PROXY}", "-w", "/src", f"golang:{go}-bookworm",
+               "-e", f"GOPROXY={PROXY}", "-e", "GOFLAGS=-buildvcs=false", "-w", "/src", f"golang:{go}-bookworm",
                "go", "build", "-o", "/out/otelc", "./tool/cmd/otelc")
         print("built linux otelc (official, from local clone)")
     if not os.path.exists(os.path.join(RUNNER_BIN, "mockcol")):
         docker("run", "--rm",
                "-v", f"{MOCKCOL_SRC}:/src", "-v", f"{RUNNER_BIN}:/out", "-v", f"{MOD_VOL}:/go/pkg/mod",
-               "-e", f"GOPROXY={PROXY}", "-w", "/src", f"golang:{go}-bookworm",
+               "-e", f"GOPROXY={PROXY}", "-e", "GOFLAGS=-buildvcs=false", "-w", "/src", f"golang:{go}-bookworm",
                "go", "build", "-o", "/out/mockcol", ".")
         print("built linux mockcol")
 
@@ -149,7 +160,7 @@ def start_deps(runid, deps):
                 args.append("--privileged")
             hc = dep.get("healthcheck") or {}
             if hc.get("test"):
-                cmd = " ".join(hc["test"][1:]) if hc["test"][0] == "CMD" else hc["test"][-1]
+                cmd = shlex.join(hc["test"][1:]) if hc["test"][0] == "CMD" else hc["test"][-1]
                 args += ["--health-cmd", cmd,
                          "--health-interval", hc.get("interval", "5s"),
                          "--health-retries", str(hc.get("retries", 60))]
@@ -175,7 +186,9 @@ def start_deps(runid, deps):
             kubeconfig = extract_k3s_kubeconfig(f"{runid}-dep-{name}", dep.get("hostname", name))
             if kubeconfig:
                 os.environ["OTELC_KUBECONFIG"] = kubeconfig
-            load_k3s_image(f"{runid}-dep-{name}", "registry.k8s.io/pause")
+            else:
+                raise RuntimeError("actual Kubernetes kubeconfig is required for informer acceptance")
+            load_k3s_image(f"{runid}-dep-{name}", "registry.k8s.io/pause:3.10")
 
 
 def extract_k3s_kubeconfig(container, hostname):
@@ -191,10 +204,20 @@ def extract_k3s_kubeconfig(container, hostname):
 
 def load_k3s_image(container, image):
     """Pipe a docker image into k3s's containerd so PullNever pods start."""
-    r = subprocess.run(f"docker save {image} | docker exec -i {container} sh -c 'k3s ctr images import -'",
-                       shell=True, capture_output=True, text=True)
-    if r.returncode != 0:
-        print(f"k3s image load failed (non-fatal): {r.stderr[:200]}")
+    docker("pull", image)
+    archive = subprocess.Popen(["docker", "save", image], stdout=subprocess.PIPE)
+    try:
+        imported = subprocess.run(["docker", "exec", "-i", container, "ctr", "--address", "/run/k3s/containerd/containerd.sock",
+                                   "--namespace", "k8s.io", "images", "import", "-"], stdin=archive.stdout,
+                                  capture_output=True, text=True)
+        archive.stdout.close()
+        saved = archive.wait()
+        if saved or imported.returncode:
+            raise RuntimeError(f"required Kubernetes fixture image import failed: {imported.stderr[-2000:]}")
+    finally:
+        if archive.poll() is None:
+            archive.kill()
+            archive.wait()
 
 
 def stop_deps(runid, deps):
@@ -278,11 +301,13 @@ def run_side(side, runid, ws, go, cfg):
             build_cmds.append(f"/tools/otelc go build -mod=mod -o /ws/{target['out']} /ws/{target['pkg']}")
         else:
             build_cmds.append(f"go build -mod=mod -toolexec /tools/go-inject -o /ws/{target['out']} /ws/{target['pkg']}")
+    if not cfg.get("build_targets"):
+        build_cmds.append(f"go version -m /ws/app > /ws/actualBuildInfo{side}.txt")
 
     env = {"GOPROXY": PROXY, "GOFLAGS": "-mod=mod", **otel_env(cfg), **cfg.get("env", {})}
     if os.environ.get("OTELC_KUBECONFIG"):
         env["KUBECONFIG_YAML"] = os.environ["OTELC_KUBECONFIG"]
-    build_args = ["run", "--rm", "--name", f"{runid}-build{side}", "--network", runid,
+    build_args = ["run", "--rm", "--init", "--name", f"{runid}-build{side}", "--network", runid,
                   "-v", f"{ws}:/ws", "-v", f"{CONTRIB}:/contrib", "-v", f"{RUNNER_BIN}:/tools:ro",
                   "-v", f"{MOD_VOL}:/go/pkg/mod", "-v", f"{BUILD_VOL[go]}:/root/.cache/go-build",
                   "-w", "/ws"]
@@ -293,13 +318,14 @@ def run_side(side, runid, ws, go, cfg):
     # library lack requires for the others. GOFLAGS=-mod=mod lets the build
     # itself add whatever is actually needed for THIS scenario's graph.
     script = "cd /ws && (go mod tidy || true) && " + " && ".join(build_cmds)
+    script = diagnostic_build_script(script)
     build_args += [f"golang:{go}-bookworm", "bash", "-c", script]
+    names = []
     try:
         r = subprocess.run(["docker", *build_args], capture_output=True, text=True)
         if r.returncode != 0:
             raise RuntimeError(f"build {side} failed:\n{r.stdout[-3000:]}\n{r.stderr[-3000:]}")
         # ---- run phase ----
-        names = []
         if cfg.get("app_script"):
             name = f"{runid}-{side.lower()}-app"
             names.append(name)
@@ -337,6 +363,13 @@ def run_side(side, runid, ws, go, cfg):
         out = os.path.join(ws, f"actual{side}.json")
         with open(out, "w", encoding="utf-8", newline="\n") as f:
             f.write(actual)
+        if cfg.get("fixture_identity") == "k8s-pod-uid":
+            logs = docker("logs", entry_name).stdout
+            receipts = [line.removeprefix("OTELC_FIXTURE_IDENTITY=") for line in logs.splitlines() if line.startswith("OTELC_FIXTURE_IDENTITY=")]
+            if len(receipts) != 1 or not re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", receipts[0]):
+                raise RuntimeError("Kubernetes fixture must report exactly one actual API-assigned Pod UID")
+            with open(os.path.join(ws, f"actualFixtureIdentity{side}.json"), "w", encoding="utf-8") as receipt:
+                json.dump({"k8s.pod.uid": receipts[0]}, receipt)
         # Log-instrumentation scenarios verify trace_id injection by diffing
         # the app's stdout (normalized) — the log bridges write to library
         # output, not OTLP.
@@ -348,6 +381,17 @@ def run_side(side, runid, ws, go, cfg):
             with open(stdout_out, "w", encoding="utf-8", newline="\n") as f:
                 f.write(logs)
         return out if stdout_out is None else (out, stdout_out)
+    except Exception:
+        diagnostics = os.path.join(ws, "native-diagnostics")
+        os.makedirs(diagnostics, exist_ok=True)
+        for name in names:
+            try:
+                logs = subprocess.run(["docker", "logs", "--tail", "200", name], capture_output=True, text=True, timeout=15)
+                with open(os.path.join(diagnostics, name + ".log"), "w", encoding="utf-8") as report:
+                    report.write(logs.stdout + logs.stderr)
+            except Exception as diagnostic_error:
+                print(f"Runtime diagnostic unavailable: {type(diagnostic_error).__name__}", file=sys.stderr)
+        raise
     finally:
         for name in [f"{runid}-build{side}"] + [f"{runid}-{side.lower()}-" + a["name"] for a in (cfg.get("apps") or [{"name": "app"}])]:
             subprocess.run(["docker", "rm", "-f", name], capture_output=True)
@@ -378,6 +422,7 @@ def main():
         "app_script": meta.get("app_script", ""),
         "entry_app": meta.get("entry_app", "app"),
         "compare_stdout": meta.get("compare_stdout", False),
+        "fixture_identity": meta.get("fixture_identity", ""),
     }
     cells = []
     for row in meta["support-version"]:
@@ -410,6 +455,16 @@ def main():
                 ws = os.path.join(os.path.dirname(__file__), "build",
                                   f"{os.path.basename(scenario)}-{go}-{fw}-{side}")
                 render_workspace(scenario, ws, fw)
+                if side == "B" and "A" in results and not cfg.get("build_targets"):
+                    actual_a = results["A"][0] if isinstance(results["A"], tuple) else results["A"]
+                    reference_info = os.path.join(os.path.dirname(actual_a), "actualBuildInfoA.txt")
+                    with open(reference_info, encoding="utf-8") as source:
+                        with open(os.path.join(ws, "go.mod"), encoding="utf-8") as manifest:
+                            gomod, aligned = align_requirement_metadata(manifest.read(), source.read())
+                    with open(os.path.join(ws, "go.mod"), "w", encoding="utf-8") as manifest:
+                        manifest.write(gomod)
+                    with open(os.path.join(ws, "actualModuleAlignment.json"), "w", encoding="utf-8") as report:
+                        json.dump(aligned, report, indent=2)
                 start_mock(runid)
                 try:
                     results[side] = run_side(side, runid, ws, go, cfg)

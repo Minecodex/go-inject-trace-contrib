@@ -18,11 +18,11 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/retry"
 
 	_ "github.com/kakj-go/go-inject-trace-contrib/otelc"
 )
@@ -56,7 +56,9 @@ func main() {
 
 	go func() {
 		time.Sleep(2 * time.Second)
-		runInformer()
+		if !runInformer() {
+			log.Fatal("Kubernetes informer acceptance did not complete create/update/delete events")
+		}
 		time.Sleep(2 * time.Second)
 		ready.Store(true)
 	}()
@@ -64,27 +66,26 @@ func main() {
 	select {}
 }
 
-func runInformer() {
+func runInformer() bool {
 	kubeConfigYaml := fetchKubeconfig()
 	if kubeConfigYaml == "" {
 		log.Print("KUBECONFIG_YAML not set")
-		return
+		return false
 	}
 
 	config, err := clientcmd.RESTConfigFromKubeConfig([]byte(kubeConfigYaml))
 	if err != nil {
 		log.Printf("Failed to build kubeconfig: %v", err)
-		return
+		return false
 	}
 
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		log.Printf("Failed to create Kubernetes client: %v", err)
-		return
+		return false
 	}
 
 	stopCh := make(chan struct{})
-	defer func() { close(stopCh) }()
 
 	addedCh := make(chan struct{}, 1)
 	updatedCh := make(chan struct{}, 1)
@@ -94,7 +95,22 @@ func runInformer() {
 		clientset,
 		0,
 		informers.WithNamespace(corev1.NamespaceDefault),
+		informers.WithTweakListOptions(func(options *metav1.ListOptions) {
+			// Production reflectors jitter watch timeouts. Keep this fixture's
+			// real request deterministic without dropping URL attributes.
+			// client-go sets Watch later in its typed client, but the
+			// reflector has already supplied the randomized timeout here.
+			if options.TimeoutSeconds != nil {
+				timeout := int64(600)
+				options.TimeoutSeconds = &timeout
+			}
+		}),
 	)
+	defer func() {
+		// Shutdown waits for the informer goroutines; stop them first.
+		close(stopCh)
+		factory.Shutdown()
+	}()
 
 	podInformer := factory.Core().V1().Pods()
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -115,6 +131,9 @@ func runInformer() {
 				return
 			}
 			log.Printf("Updated Pod: %s", pod.Name)
+			if pod.Labels["updated"] != "true" {
+				return
+			}
 			select {
 			case updatedCh <- struct{}{}:
 			default:
@@ -141,9 +160,11 @@ func runInformer() {
 
 	factory.Start(stopCh)
 
-	if !cache.WaitForCacheSync(stopCh, podInformer.Informer().HasSynced) {
+	syncContext, cancelSync := context.WithTimeout(context.Background(), eventTimeout)
+	defer cancelSync()
+	if !cache.WaitForCacheSync(syncContext.Done(), podInformer.Informer().HasSynced) {
 		log.Print("Failed to wait for caches to sync")
-		return
+		return false
 	}
 
 	ctx := context.Background()
@@ -156,7 +177,7 @@ func runInformer() {
 			Containers: []corev1.Container{
 				{
 					Name:            "test-container",
-					Image:           "registry.k8s.io/pause",
+					Image:           "registry.k8s.io/pause:3.10",
 					ImagePullPolicy: corev1.PullNever,
 				},
 			},
@@ -164,40 +185,37 @@ func runInformer() {
 	}
 
 	// create a pod
-	_, err = clientset.CoreV1().Pods(corev1.NamespaceDefault).Create(ctx, &pod, metav1.CreateOptions{})
+	created, err := clientset.CoreV1().Pods(corev1.NamespaceDefault).Create(ctx, &pod, metav1.CreateOptions{})
 	if err != nil {
 		log.Printf("Failed to create pod: %v", err)
-		return
+		return false
 	}
+	// The API-assigned identity is independent of the instrumentation. The
+	// comparer may map only this exact value across the two fresh clusters.
+	fmt.Printf("OTELC_FIXTURE_IDENTITY=%s\n", created.UID)
 
 	select {
 	case <-addedCh:
 	case <-time.After(eventTimeout):
 		log.Print("Timed out waiting for pod creation event")
-		return
+		return false
 	}
 
-	// update the pod
-	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		latestPod, err := clientset.CoreV1().Pods(corev1.NamespaceDefault).Get(ctx, pod.Name, metav1.GetOptions{})
-		if err != nil {
-			return err
-		}
-
-		latestPod.Labels = map[string]string{"updated": "true"}
-		_, err = clientset.CoreV1().Pods(corev1.NamespaceDefault).Update(ctx, latestPod, metav1.UpdateOptions{})
-		return err
-	})
+	// Change the actual label atomically. Kubelet status updates may advance
+	// resourceVersion between a read and PUT; their incidental conflict/retry
+	// counts are unrelated to informer instrumentation.
+	_, err = clientset.CoreV1().Pods(corev1.NamespaceDefault).Patch(ctx, pod.Name,
+		types.MergePatchType, []byte(`{"metadata":{"labels":{"updated":"true"}}}`), metav1.PatchOptions{})
 	if err != nil {
 		log.Printf("Failed to update pod: %v", err)
-		return
+		return false
 	}
 
 	select {
 	case <-updatedCh:
 	case <-time.After(eventTimeout):
 		log.Print("Timed out waiting for pod update event")
-		return
+		return false
 	}
 
 	// delete the pod
@@ -206,17 +224,17 @@ func runInformer() {
 	})
 	if err != nil {
 		log.Printf("Failed to delete pod: %v", err)
-		return
+		return false
 	}
 
 	select {
 	case <-deletedCh:
 	case <-time.After(eventTimeout):
 		log.Print("Timed out waiting for pod deletion event")
-		return
+		return false
 	}
 
-	factory.Shutdown()
+	return true
 }
 
 // fetchKubeconfig reads KUBECONFIG_YAML set by the runner from the k3s

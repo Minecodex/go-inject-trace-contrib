@@ -18,7 +18,10 @@ Resource – attributes minus volatile detector output (process.*, host.*,
             container ids, service.instance.id, telemetry.distro.*).
 """
 import json
+import re
 import sys
+from copy import deepcopy
+from pathlib import Path
 
 VOLATILE_RESOURCE_KEYS = {
     "service.instance.id",
@@ -153,8 +156,11 @@ def canon_traces(data):
                 slot["spans"].append(s)
     out = []
     for tid, slot in traces.items():
-        out.append({"resource": slot["resource"],
-                    "tree": canon_span_tree(slot["spans"])})
+        tree = canon_span_tree(slot["spans"])
+        # Health polling is intentionally removed above. A trace containing
+        # only those volatile spans must not leave a counted empty envelope.
+        if tree:
+            out.append({"resource": slot["resource"], "tree": tree})
     out.sort(key=canon_key)
     return out
 
@@ -183,19 +189,29 @@ def canon_metric_points(metric):
 
 
 def canon_metrics(data):
-    out = []
+    instruments = {}
     for rm in data.get("resourceMetrics") or []:
         res = canon_resource(rm.get("resource"))
         for sm in rm.get("scopeMetrics") or []:
             scope = ((sm.get("scope") or {}).get("name")) or ""
             for m in sm.get("metrics") or []:
-                out.append({
+                instrument = {
                     "resource": res,
                     "scope": scope,
                     "name": m.get("name", ""),
                     "unit": m.get("unit", ""),
                     "metric": canon_metric_points(m),
-                })
+                }
+                points = instrument["metric"].pop("points", [])
+                key = canon_key(instrument)
+                entry = instruments.setdefault(key, {"instrument": instrument, "points": {}})
+                for point in points:
+                    entry["points"][canon_key(point)] = point
+    out = []
+    for entry in instruments.values():
+        instrument = entry["instrument"]
+        instrument["metric"]["points"] = [entry["points"][key] for key in sorted(entry["points"])]
+        out.append(instrument)
     out.sort(key=canon_key)
     return out
 
@@ -222,11 +238,29 @@ def canon_logs(data):
     return out
 
 
+def apply_fixture_identity(data, identity):
+    if not isinstance(identity, dict) or set(identity) != {"k8s.pod.uid"} or not isinstance(identity["k8s.pod.uid"], str) or not re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", identity["k8s.pod.uid"]):
+        raise ValueError("only a valid API-assigned Kubernetes Pod UID can be mapped")
+    result = deepcopy(data)
+    for resource in result.get("resourceSpans", []):
+        for scope in resource.get("scopeSpans", []):
+            for span in scope.get("spans", []):
+                for attribute in span.get("attributes", []):
+                    if attribute.get("key") == "k8s.pod.uid" and attribute.get("value", {}).get("stringValue") == identity["k8s.pod.uid"]:
+                        attribute["value"]["stringValue"] = "<fixture-pod-uid>"
+    return result
+
+
 def normalize(path):
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
     if not isinstance(data, dict):  # empty mockcol dump "{}"
         data = {}
+    source = Path(path)
+    if source.stem in ("actualA", "actualB"):
+        receipt = source.with_name(f"actualFixtureIdentity{source.stem[-1]}.json")
+        if receipt.is_file():
+            data = apply_fixture_identity(data, json.loads(receipt.read_text(encoding="utf-8")))
     return {
         "traces": canon_traces(data),
         "metrics": canon_metrics(data),
@@ -253,7 +287,10 @@ def main():
     if len(sys.argv) != 3:
         sys.exit("usage: normdiff_otlp.py <actualA.json> <actualB.json>")
     a, b = normalize(sys.argv[1]), normalize(sys.argv[2])
-    ok = all(diff(sig, a[sig], b[sig]) for sig in ("traces", "metrics", "logs"))
+    for original, normalized in zip(sys.argv[1:], (a, b)):
+        Path(original).with_suffix(".normalized.json").write_text(
+            json.dumps(normalized, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    ok = all([diff(sig, a[sig], b[sig]) for sig in ("traces", "metrics", "logs")])
     if ok:
         ntr = len(a["traces"])
         nme = len(a["metrics"])
