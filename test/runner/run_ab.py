@@ -112,7 +112,7 @@ def stop_mock(runid):
     time.sleep(1)
 
 
-def start_deps(runid, deps):
+def start_deps(runid, deps, scenario):
     """Start scenario dependency services declared in plugin.yml."""
     remaining = dict(deps)
     started = []
@@ -135,6 +135,13 @@ def start_deps(runid, deps):
                          "--health-retries", str(hc.get("retries", 60))]
             for k, v in (dep.get("environment") or {}).items():
                 args += ["-e", f"{k}={v}"]
+            for volume in dep.get("volumes", []):
+                source, destination, *options = volume.split(":")
+                source_path = os.path.realpath(os.path.join(scenario, source))
+                if os.path.commonpath([scenario, source_path]) != scenario or not os.path.isfile(source_path):
+                    raise ValueError(f"dependency configuration must be an existing scenario file: {source}")
+                mode = ":" + ":".join(options) if options else ""
+                args += ["-v", f"{source_path}:{destination}{mode}"]
             args.append(dep["image"])
             # compose-style `command:` overrides the image CMD (words appended
             # after the image name); needed by images with no default server
@@ -362,7 +369,7 @@ def main():
                 ws = base_ws + side
                 render_workspace(scenario, ws, fw)
                 stop_deps(runid, cfg["deps"])
-                start_deps(runid, cfg["deps"])
+                start_deps(runid, cfg["deps"], scenario)
                 start_mock(runid)
                 results[side] = run_side(side, runid, ws, go, cfg)
                 stop_mock(runid)

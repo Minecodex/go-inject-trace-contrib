@@ -49,3 +49,5 @@ PostgreSQL dialector 与 database/sql 的连接信息使用已注入的导出元
 Docker CMD 健康检查保留声明的参数边界，避免将 bash -c 的脚本拆开后让外层 sh 解释 /dev/tcp，误报 Mongo 等依赖不健康。健康失败包含实际探针输出和服务日志，不把超时当作可忽略的场景。
 
 Elasticsearch v8 使用完整 /v8 模块路径，并固定每个声明单元的实际框架版本，避免非法 major path 或聚合 SDK 依赖把较低版本单元升级成同一个版本。
+
+依赖容器挂载场景声明的上游配置文件，文件必须位于当前场景内；Elasticsearch/RocketMQ 使用固定上游配置，配置只读。Elasticsearch 单节点验收为小数据行为测试，使用明确的 512 MiB JVM 预算并等待真实集群健康，不依赖新镜像的默认安全/集群配置。

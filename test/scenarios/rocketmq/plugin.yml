@@ -21,7 +21,7 @@ dependencies:
     - 10911
     - 10912
     volumes:
-    - ./config/broker.conf:/home/rocketmq/rocketmq-5.3.2/conf/broker.conf
+    - ./config/broker.conf:/home/rocketmq/rocketmq-5.3.2/conf/broker.conf:ro
     command:
     - sh
     - mqbroker
