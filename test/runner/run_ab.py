@@ -24,6 +24,7 @@ import subprocess
 import sys
 import time
 import uuid
+from pathlib import Path
 
 import yaml
 from fixture_modules import diagnostic_build_script
@@ -277,7 +278,7 @@ def run_side(side, runid, ws, go, cfg):
         v = subprocess.run(["docker", "run", "--rm", "--network", runid,
                             "-v", f"{cfg['scenario']}:/scn:ro", CURL_IMAGE, "-s",
                             "-w", "\n%{http_code}", "-X", "POST",
-                            "--data-binary", "@/scn/excepted.yml",
+                            "--data-binary", f"@/scn/{cfg['validation_file']}",
                             "http://oap:12800/dataValidate"], capture_output=True, text=True)
         validation_body, _, validation_status = v.stdout.rpartition("\n")
         validation_status = validation_status.strip()
@@ -293,6 +294,14 @@ def run_side(side, runid, ws, go, cfg):
     finally:
         for name in [f"{runid}-build{side}"] + [f"{runid}-{side.lower()}-" + a["name"] for a in (cfg.get("apps") or [{"name": "app"}])]:
             subprocess.run(["docker", "rm", "-f", name], capture_output=True)
+
+
+def expected_file(scenario, declared="excepted.yml"):
+    root = Path(scenario).resolve()
+    path = (root / declared).resolve()
+    if not path.is_relative_to(root) or not path.is_file():
+        raise ValueError(f"declared validation fixture is missing or outside its scenario: {declared}")
+    return path.relative_to(root).as_posix()
 
 
 def main():
@@ -332,12 +341,13 @@ def main():
                 continue
             if float(go) < float(args.min_go):
                 continue
-            cells.append((go, fw))
+            cells.append((go, fw, expected_file(scenario, row.get("excepted-file", "excepted.yml"))))
     if not cells:
         sys.exit("no matrix cell selected")
 
     failures = []
-    for go, fw in cells:
+    for go, fw, validation_file in cells:
+        cfg["validation_file"] = validation_file
         runid = f"ab{uuid.uuid4().hex[:8]}"
         base_ws = os.path.join(os.path.dirname(__file__), "build",
                                f"{os.path.basename(scenario)}-{go}-{fw}")
