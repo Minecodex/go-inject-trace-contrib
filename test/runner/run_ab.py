@@ -20,6 +20,7 @@ import argparse
 import json
 import os
 import shutil
+import shlex
 import subprocess
 import sys
 import time
@@ -128,7 +129,7 @@ def start_deps(runid, deps):
                 args += ["--network-alias", hostname]
             hc = dep.get("healthcheck") or {}
             if hc.get("test"):
-                cmd = " ".join(hc["test"][1:]) if hc["test"][0] == "CMD" else hc["test"][-1]
+                cmd = shlex.join(hc["test"][1:]) if hc["test"][0] == "CMD" else hc["test"][-1]
                 args += ["--health-cmd", cmd,
                          "--health-interval", hc.get("interval", "5s"),
                          "--health-retries", str(hc.get("retries", 60))]
@@ -168,7 +169,9 @@ def wait_healthy(container, timeout):
         if out == "healthy":
             return
         time.sleep(3)
-    raise TimeoutError(f"{container} not healthy after {timeout}s")
+    health = subprocess.run(["docker", "inspect", "-f", "{{json .State.Health}}", container], capture_output=True, text=True)
+    logs = subprocess.run(["docker", "logs", "--tail", "30", container], capture_output=True, text=True)
+    raise TimeoutError(f"{container} not healthy after {timeout}s:\n{health.stdout}\n{logs.stdout}{logs.stderr}")
 
 
 def wait_container_http(runid, url, timeout):

@@ -43,3 +43,5 @@ SkyWalking 的普通运行时指标采集器在注册前读取 `SW_AGENT_PLUGIN_
 HTTP 插桩使用 SDK 原有 NanoTime/DurationOfInterceptor API 记录进入和退出处理的实际开销，业务请求本身的耗时不计入该直方图。自观测验收必须收到真实样本，不能只建立空指标结构。
 
 GORM 矩阵逐项使用声明的 excepted-file，版本验收文件来自同一固定上游提交；同一个版本的 A/B 使用相同合同。缺失或越界文件直接失败，不退回默认合同。官方 Collector 的错误正文也保存为失败诊断，区分插桩问题与版本合同选择问题。
+
+Docker CMD 健康检查保留声明的参数边界，避免将 bash -c 的脚本拆开后让外层 sh 解释 /dev/tcp，误报 Mongo 等依赖不健康。健康失败包含实际探针输出和服务日志，不把超时当作可忽略的场景。

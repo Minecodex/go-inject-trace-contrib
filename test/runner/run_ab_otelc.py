@@ -18,6 +18,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
@@ -159,7 +160,7 @@ def start_deps(runid, deps):
                 args.append("--privileged")
             hc = dep.get("healthcheck") or {}
             if hc.get("test"):
-                cmd = " ".join(hc["test"][1:]) if hc["test"][0] == "CMD" else hc["test"][-1]
+                cmd = shlex.join(hc["test"][1:]) if hc["test"][0] == "CMD" else hc["test"][-1]
                 args += ["--health-cmd", cmd,
                          "--health-interval", hc.get("interval", "5s"),
                          "--health-retries", str(hc.get("retries", 60))]
