@@ -115,6 +115,7 @@ jobs:
           path: |
             contrib/test/runner/ci-*.json
             contrib/test/runner/build/**/actual*.json
+            contrib/test/runner/build/**/actual*.yaml
 
   ci-gate:
     name: CI

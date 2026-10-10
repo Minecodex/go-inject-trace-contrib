@@ -27,3 +27,5 @@ CI 失败会阻止合并。修复失败后在同一个功能分支继续提交�
 首次实际 A/B 检查发现资源初始化缺少稳定的 telemetry.sdk 属性，现由同一资源初始化路径为三种信号加入 SDK detector。健康探针本来就属于比较器排除的波动输入，纯探针 trace 也不再留下空树；业务 span 和稳定 SDK 属性的差异继续失败，并有独立回归测试。容器构建关闭隐式 VCS 探测，源码 provenance 由固定 checkout 提交记录，不放宽 Git 的所有权检查。
 
 每个遥测任务保存两侧实际 OTLP 与完整归一化 JSON，避免控制台截断遮住差异。手动 Telemetry diagnostics 可按已声明场景与 Go 版本复现问题，使用相同固定上游与双侧比较；其结果不作为必需 CI 或完整发布矩阵的替代证据。
+
+A/B 工作区固定 fixture 声明的模块版本，防止官方工具添加依赖时只升级 A 侧 SDK，导致比较不同库版本。GenAI 移植补齐真实请求 URL 的 server.address/server.port；OpenAI 的 span 与指标均携带端点，Anthropic 按固定上游只在 span 中携带，保留 SDK 原有身份和语义差异检查。

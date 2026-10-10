@@ -17,6 +17,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -33,6 +34,7 @@ import (
 	"github.com/kakj-go/go-inject-trace-contrib/otelc/genai/streaming"
 	hooklog "github.com/kakj-go/go-inject-trace-contrib/otelc/hooklog"
 	hooksupport "github.com/kakj-go/go-inject-trace-contrib/otelc/hooksupport"
+	"github.com/kakj-go/go-inject-trace-contrib/otelc/netutil"
 )
 
 const (
@@ -274,6 +276,14 @@ func openAIOperationName(op operationType) string {
 // OpenAIMiddleware returns the openai-go HTTP middleware for the given scope
 // name. The scope determines the tracer/meter identity (span scope name), so
 // each SDK major version passes its own.
+func endpointAttrs(u *url.URL) []attribute.KeyValue {
+	address, port := netutil.HTTPServerEndpoint(u)
+	if address == "" || port <= 0 {
+		return nil
+	}
+	return []attribute.KeyValue{otelsemconv.ServerAddress(address), otelsemconv.ServerPort(port)}
+}
+
 func OpenAIMiddleware(scope string) func(*http.Request, func(*http.Request) (*http.Response, error)) (*http.Response, error) {
 	state := ensureScope(scope)
 	return func(req *http.Request, next func(*http.Request) (*http.Response, error)) (*http.Response, error) {
@@ -321,6 +331,7 @@ func OpenAIMiddleware(scope string) func(*http.Request, func(*http.Request) (*ht
 			attrStr(GenAIRequestModelKey, model),
 			attrStr(GenAIProviderNameKey, provider),
 		}
+		baseAttrs = append(baseAttrs, endpointAttrs(req.URL)...)
 		spanAttrs = append(baseAttrs, spanAttrs...)
 
 		ctx := req.Context()

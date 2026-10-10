@@ -16,6 +16,7 @@ Usage:
 """
 import argparse
 import os
+import re
 import subprocess
 import sys
 import time
@@ -88,6 +89,18 @@ def append_sdk_requires(gomod):
     return gomod[:idx] + block + "\n" + gomod[idx:]
 
 
+def pin_declared_modules(gomod):
+    # The official tool adds its own requirements. Preserve the fixture's
+    # declared versions on both sides instead of comparing different SDKs.
+    replaced = set(re.findall(r"(?m)^replace\s+(\S+)\s+=>", gomod))
+    declared = re.findall(r"(?m)^\s*(?:require\s+)?(\S+)\s+(v\S+)", gomod)
+    pins = [(module, version) for module, version in declared if module not in replaced]
+    if not pins:
+        return gomod
+    return gomod + "\nreplace (\n" + "\n".join(
+        f"\t{module} => {module} {version}" for module, version in pins) + "\n)\n"
+
+
 def render_workspace(scenario, out, framework=""):
     os.makedirs(out, exist_ok=True)
     for name in ("main.go", "inject.go"):
@@ -98,6 +111,7 @@ def render_workspace(scenario, out, framework=""):
     with open(os.path.join(scenario, "go.mod.tpl"), encoding="utf-8") as f:
         gomod = f.read()
     gomod = gomod.replace("{{FRAMEWORK_VERSION}}", framework)
+    gomod = pin_declared_modules(gomod)
     gomod = append_sdk_requires(gomod)
     with open(os.path.join(out, "go.mod"), "w", encoding="utf-8", newline="\n") as f:
         f.write(gomod)
