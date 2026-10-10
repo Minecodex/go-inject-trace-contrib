@@ -29,3 +29,5 @@ CI 失败会阻止合并。修复失败后在同一个功能分支继续提交�
 每个遥测任务保存两侧实际 OTLP 与完整归一化 JSON，避免控制台截断遮住差异。手动 Telemetry diagnostics 可按已声明场景与 Go 版本复现问题，使用相同固定上游与双侧比较；其结果不作为必需 CI 或完整发布矩阵的替代证据。
 
 A/B 工作区固定 fixture 声明的模块版本，防止官方工具添加依赖时只升级 A 侧 SDK，导致比较不同库版本。GenAI 移植补齐真实请求 URL 的 server.address/server.port；OpenAI 的 span 与指标均携带端点，Anthropic 按固定上游只在 span 中携带，保留 SDK 原有身份和语义差异检查。
+
+构建容器通过 init 管理脱离编译器代理的子进程，并保留显式 shell 生命周期与失败前的 daemon/进程/内存诊断。指标按同一 resource/scope/instrument 的稳定合同合并导出批次，完整保留属性点与 bucket 边界；不同采样批次不产生假差异，缺少属性点或业务指标仍失败。

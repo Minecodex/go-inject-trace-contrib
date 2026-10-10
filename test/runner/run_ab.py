@@ -224,7 +224,7 @@ def run_side(side, runid, ws, go, cfg):
         "SW_AGENT_REPORTER_GRPC_BACKEND_SERVICE": "oap:19876",
         **cfg.get("env", {}),
     }
-    build_args = ["run", "--rm", "--name", f"{runid}-build{side}", "--network", runid,
+    build_args = ["run", "--rm", "--init", "--name", f"{runid}-build{side}", "--network", runid,
                   "-v", f"{ws}:/ws", "-v", f"{CONTRIB}:/contrib:ro", "-v", f"{RUNNER_BIN}:/tools:ro",
                   "-v", f"{MOD_VOL}:/go/pkg/mod", "-v", f"{BUILD_VOL[go]}:/root/.cache/go-build",
                   "-w", "/ws"]
