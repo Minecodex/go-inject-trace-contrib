@@ -16,13 +16,13 @@ Usage:
 """
 import argparse
 import os
-import re
 import subprocess
 import sys
 import time
 import uuid
 
 import yaml
+from fixture_modules import declared_modules, pin_declared_modules
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 CONTRIB = ROOT
@@ -81,24 +81,13 @@ OTELC_SDK_REQUIRES = [
 
 
 def append_sdk_requires(gomod):
-    missing = [r for r in OTELC_SDK_REQUIRES if r.split()[0] not in gomod]
+    present = declared_modules(gomod)
+    missing = [r for r in OTELC_SDK_REQUIRES if r.split()[0] not in present]
     if not missing:
         return gomod
     block = "\nrequire (\n" + "\n".join(f"\t{r} // indirect" for r in missing) + "\n)\n"
     idx = gomod.index("replace github.com/kakj-go/go-inject-trace-contrib")
     return gomod[:idx] + block + "\n" + gomod[idx:]
-
-
-def pin_declared_modules(gomod):
-    # The official tool adds its own requirements. Preserve the fixture's
-    # declared versions on both sides instead of comparing different SDKs.
-    replaced = set(re.findall(r"(?m)^replace\s+(\S+)\s+=>", gomod))
-    declared = re.findall(r"(?m)^\s*(?:require\s+)?(\S+)\s+(v\S+)", gomod)
-    pins = [(module, version) for module, version in declared if module not in replaced]
-    if not pins:
-        return gomod
-    return gomod + "\nreplace (\n" + "\n".join(
-        f"\t{module} => {module} {version}" for module, version in pins) + "\n)\n"
 
 
 def render_workspace(scenario, out, framework=""):
