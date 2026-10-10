@@ -8,7 +8,7 @@ but B may have extra segments from timing artifacts (stale MQ consumption).
 """
 import re
 import sys
-import yaml
+import json
 
 
 def normalize_tag_value(value):
@@ -57,12 +57,36 @@ def normalize(data):
             spans.sort(key=lambda s: (s["spanId"], s["operationName"]))
             out["segments"].append({"service": item.get("serviceName"), "spans": spans})
     out["segments"].sort(key=lambda s: (s["service"], str(s["spans"])))
-    for m in data.get("meterItems") or []:
-        out["meters"].append({"name": m.get("meterName") or m.get("name"), "labels": m.get("labels")})
+    for item in data.get("meterItems") or []:
+        for meter in item.get("meters") or []:
+            identity = meter.get("meterId") or {}
+            out["meters"].append({
+                "service": item.get("serviceName"),
+                "name": identity.get("name"),
+                "tags": sorted((tag.get("name"), tag.get("value")) for tag in identity.get("tags") or []),
+                "kind": "histogram" if "histogramBuckets" in meter else "single",
+                "buckets": meter.get("histogramBuckets"),
+            })
+    out["meters"].sort(key=lambda item: json.dumps(item, sort_keys=True))
+    for item in data.get("logItems") or []:
+        for log in item.get("logs") or []:
+            context = log.get("traceContext") or {}
+            out["logs"].append({
+                "service": item.get("serviceName"),
+                "endpoint": log.get("endpoint"),
+                "body": log.get("body"),
+                "layer": log.get("layer"),
+                "tags": sorted((tag.get("key"), normalize_tag_value(tag.get("value"))) for tag in (log.get("tags") or {}).get("data", [])),
+                "correlated": bool(context.get("traceId") and context.get("traceSegmentId")),
+                "spanId": context.get("spanId") if context else None,
+            })
+    out["logs"].sort(key=lambda item: json.dumps(item, sort_keys=True))
     return out
 
 
 def main():
+    import yaml
+
     a = normalize(yaml.safe_load(open(sys.argv[1], encoding="utf-8")))
     b = normalize(yaml.safe_load(open(sys.argv[2], encoding="utf-8")))
     ok = True
