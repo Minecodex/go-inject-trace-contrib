@@ -318,12 +318,12 @@ def run_side(side, runid, ws, go, cfg):
     script = "cd /ws && (go mod tidy || true) && " + " && ".join(build_cmds)
     script = diagnostic_build_script(script)
     build_args += [f"golang:{go}-bookworm", "bash", "-c", script]
+    names = []
     try:
         r = subprocess.run(["docker", *build_args], capture_output=True, text=True)
         if r.returncode != 0:
             raise RuntimeError(f"build {side} failed:\n{r.stdout[-3000:]}\n{r.stderr[-3000:]}")
         # ---- run phase ----
-        names = []
         if cfg.get("app_script"):
             name = f"{runid}-{side.lower()}-app"
             names.append(name)
@@ -372,6 +372,17 @@ def run_side(side, runid, ws, go, cfg):
             with open(stdout_out, "w", encoding="utf-8", newline="\n") as f:
                 f.write(logs)
         return out if stdout_out is None else (out, stdout_out)
+    except Exception:
+        diagnostics = os.path.join(ws, "native-diagnostics")
+        os.makedirs(diagnostics, exist_ok=True)
+        for name in names:
+            try:
+                logs = subprocess.run(["docker", "logs", "--tail", "200", name], capture_output=True, text=True, timeout=15)
+                with open(os.path.join(diagnostics, name + ".log"), "w", encoding="utf-8") as report:
+                    report.write(logs.stdout + logs.stderr)
+            except Exception as diagnostic_error:
+                print(f"Runtime diagnostic unavailable: {type(diagnostic_error).__name__}", file=sys.stderr)
+        raise
     finally:
         for name in [f"{runid}-build{side}"] + [f"{runid}-{side.lower()}-" + a["name"] for a in (cfg.get("apps") or [{"name": "app"}])]:
             subprocess.run(["docker", "rm", "-f", name], capture_output=True)

@@ -86,7 +86,6 @@ func runInformer() bool {
 	}
 
 	stopCh := make(chan struct{})
-	defer func() { close(stopCh) }()
 
 	addedCh := make(chan struct{}, 1)
 	updatedCh := make(chan struct{}, 1)
@@ -97,6 +96,11 @@ func runInformer() bool {
 		0,
 		informers.WithNamespace(corev1.NamespaceDefault),
 	)
+	defer func() {
+		// Shutdown waits for the informer goroutines; stop them first.
+		close(stopCh)
+		factory.Shutdown()
+	}()
 
 	podInformer := factory.Core().V1().Pods()
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -117,6 +121,9 @@ func runInformer() bool {
 				return
 			}
 			log.Printf("Updated Pod: %s", pod.Name)
+			if pod.Labels["updated"] != "true" {
+				return
+			}
 			select {
 			case updatedCh <- struct{}{}:
 			default:
@@ -218,7 +225,6 @@ func runInformer() bool {
 		return false
 	}
 
-	factory.Shutdown()
 	return true
 }
 

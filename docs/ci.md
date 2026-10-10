@@ -33,3 +33,5 @@ A/B 工作区固定 fixture 声明的模块版本，防止官方工具添加依�
 构建容器通过 init 管理脱离编译器代理的子进程，并保留显式 shell 生命周期与失败前的 daemon/进程/内存诊断。指标按同一 resource/scope/instrument 的稳定合同合并导出批次，完整保留属性点与 bucket 边界；不同采样批次不产生假差异，缺少属性点或业务指标仍失败。
 
 发布制品同时记录 go version -m。官方工具可能提高 require 的 MVS 标签，实际代码仍由 replace 固定；仅在两侧有效 replacement 完全一致时，对齐候选的逻辑 require 标签，以覆盖从 BuildInfo 计算的 SDK User-Agent。不会更改实际 SDK 版本，也不会删除 User-Agent 属性比较；有效模块不同直接失败，并上传对齐记录。
+
+Kubernetes 场景使用与 client-go 对齐的固定 K3s 和有效依赖版本，必须成功导入实际 Pod 镜像，并收到创建、指定标签更新与删除事件才进入健康状态。Informer 清理先关闭 stop channel 再调用等待退出的 Shutdown，避免事件完成后仍永久阻塞；异常初始化不能以空遥测或健康返回代替验收。
