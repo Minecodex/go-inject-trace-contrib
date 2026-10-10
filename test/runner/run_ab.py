@@ -275,12 +275,19 @@ def run_side(side, runid, ws, go, cfg):
         with open(out, "w", encoding="utf-8", newline="\n") as f:
             f.write(actual)
         v = subprocess.run(["docker", "run", "--rm", "--network", runid,
-                            "-v", f"{cfg['scenario']}:/scn:ro", CURL_IMAGE, "-s", "-o", "/dev/null",
-                            "-w", "%{http_code}", "-X", "POST",
+                            "-v", f"{cfg['scenario']}:/scn:ro", CURL_IMAGE, "-s",
+                            "-w", "\n%{http_code}", "-X", "POST",
                             "--data-binary", "@/scn/excepted.yml",
                             "http://oap:12800/dataValidate"], capture_output=True, text=True)
-        print(f"[{side}] excepted.yml validate -> HTTP {v.stdout.strip()} {v.stderr.strip()}")
-        if v.stdout.strip() != "200":
+        validation_body, _, validation_status = v.stdout.rpartition("\n")
+        validation_status = validation_status.strip()
+        print(f"[{side}] excepted.yml validate -> HTTP {validation_status} {v.stderr.strip()}")
+        if validation_status != "200":
+            diagnostics = os.path.join(ws, "native-diagnostics")
+            os.makedirs(diagnostics, exist_ok=True)
+            with open(os.path.join(diagnostics, f"validation{side}.txt"), "w", encoding="utf-8") as report:
+                report.write(validation_body + v.stderr)
+            print(validation_body, file=sys.stderr)
             raise RuntimeError(f"{side} failed excepted.yml validation")
         return out
     finally:
