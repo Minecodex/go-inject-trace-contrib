@@ -184,7 +184,9 @@ def start_deps(runid, deps):
             kubeconfig = extract_k3s_kubeconfig(f"{runid}-dep-{name}", dep.get("hostname", name))
             if kubeconfig:
                 os.environ["OTELC_KUBECONFIG"] = kubeconfig
-            load_k3s_image(f"{runid}-dep-{name}", "registry.k8s.io/pause")
+            else:
+                raise RuntimeError("actual Kubernetes kubeconfig is required for informer acceptance")
+            load_k3s_image(f"{runid}-dep-{name}", "registry.k8s.io/pause:3.10")
 
 
 def extract_k3s_kubeconfig(container, hostname):
@@ -200,10 +202,20 @@ def extract_k3s_kubeconfig(container, hostname):
 
 def load_k3s_image(container, image):
     """Pipe a docker image into k3s's containerd so PullNever pods start."""
-    r = subprocess.run(f"docker save {image} | docker exec -i {container} sh -c 'k3s ctr images import -'",
-                       shell=True, capture_output=True, text=True)
-    if r.returncode != 0:
-        print(f"k3s image load failed (non-fatal): {r.stderr[:200]}")
+    docker("pull", image)
+    archive = subprocess.Popen(["docker", "save", image], stdout=subprocess.PIPE)
+    try:
+        imported = subprocess.run(["docker", "exec", "-i", container, "ctr", "--address", "/run/k3s/containerd/containerd.sock",
+                                   "--namespace", "k8s.io", "images", "import", "-"], stdin=archive.stdout,
+                                  capture_output=True, text=True)
+        archive.stdout.close()
+        saved = archive.wait()
+        if saved or imported.returncode:
+            raise RuntimeError(f"required Kubernetes fixture image import failed: {imported.stderr[-2000:]}")
+    finally:
+        if archive.poll() is None:
+            archive.kill()
+            archive.wait()
 
 
 def stop_deps(runid, deps):

@@ -56,7 +56,9 @@ func main() {
 
 	go func() {
 		time.Sleep(2 * time.Second)
-		runInformer()
+		if !runInformer() {
+			log.Fatal("Kubernetes informer acceptance did not complete create/update/delete events")
+		}
 		time.Sleep(2 * time.Second)
 		ready.Store(true)
 	}()
@@ -64,23 +66,23 @@ func main() {
 	select {}
 }
 
-func runInformer() {
+func runInformer() bool {
 	kubeConfigYaml := fetchKubeconfig()
 	if kubeConfigYaml == "" {
 		log.Print("KUBECONFIG_YAML not set")
-		return
+		return false
 	}
 
 	config, err := clientcmd.RESTConfigFromKubeConfig([]byte(kubeConfigYaml))
 	if err != nil {
 		log.Printf("Failed to build kubeconfig: %v", err)
-		return
+		return false
 	}
 
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		log.Printf("Failed to create Kubernetes client: %v", err)
-		return
+		return false
 	}
 
 	stopCh := make(chan struct{})
@@ -143,7 +145,7 @@ func runInformer() {
 
 	if !cache.WaitForCacheSync(stopCh, podInformer.Informer().HasSynced) {
 		log.Print("Failed to wait for caches to sync")
-		return
+		return false
 	}
 
 	ctx := context.Background()
@@ -156,7 +158,7 @@ func runInformer() {
 			Containers: []corev1.Container{
 				{
 					Name:            "test-container",
-					Image:           "registry.k8s.io/pause",
+					Image:           "registry.k8s.io/pause:3.10",
 					ImagePullPolicy: corev1.PullNever,
 				},
 			},
@@ -167,14 +169,14 @@ func runInformer() {
 	_, err = clientset.CoreV1().Pods(corev1.NamespaceDefault).Create(ctx, &pod, metav1.CreateOptions{})
 	if err != nil {
 		log.Printf("Failed to create pod: %v", err)
-		return
+		return false
 	}
 
 	select {
 	case <-addedCh:
 	case <-time.After(eventTimeout):
 		log.Print("Timed out waiting for pod creation event")
-		return
+		return false
 	}
 
 	// update the pod
@@ -190,14 +192,14 @@ func runInformer() {
 	})
 	if err != nil {
 		log.Printf("Failed to update pod: %v", err)
-		return
+		return false
 	}
 
 	select {
 	case <-updatedCh:
 	case <-time.After(eventTimeout):
 		log.Print("Timed out waiting for pod update event")
-		return
+		return false
 	}
 
 	// delete the pod
@@ -206,17 +208,18 @@ func runInformer() {
 	})
 	if err != nil {
 		log.Printf("Failed to delete pod: %v", err)
-		return
+		return false
 	}
 
 	select {
 	case <-deletedCh:
 	case <-time.After(eventTimeout):
 		log.Print("Timed out waiting for pod deletion event")
-		return
+		return false
 	}
 
 	factory.Shutdown()
+	return true
 }
 
 // fetchKubeconfig reads KUBECONFIG_YAML set by the runner from the k3s
