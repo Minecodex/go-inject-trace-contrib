@@ -61,3 +61,5 @@ SkyWalking 比较器读取实际 meters/logs 明细，验证指标名称、标�
 SkyWalking 保留每个 fixture 明确声明的忽略配置，不自动排除 health span。官方 Collector 合同需要这些真实探针与 ignored-context 指标；全局忽略会丢失必需 Segment 或改变指标，不能作为启动问题的修复。
 
 Kratos 入口在 AfterStart 中等待真实 gRPC 连接进入 Ready 后才监听外部端口；就绪等待有 30 秒预算，失败直接终止。不会在连接仍处于 Idle/Connecting 时开放业务入口，也不靠健康探针尝试次数判断 A/B 差异。
+
+Kubernetes fixture 通过真实 Merge Patch 原子修改 Pod 标签，继续等待 informer 的实际更新与删除事件。它不使用读后全对象 PUT，避免 kubelet 的独立状态更新偶发产生一侧的 resourceVersion 冲突与重试；原始 HTTP、错误状态和 informer spans 仍完整比较。

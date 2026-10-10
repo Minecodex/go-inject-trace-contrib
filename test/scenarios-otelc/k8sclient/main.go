@@ -18,11 +18,11 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/client-go/util/retry"
 
 	_ "github.com/kakj-go/go-inject-trace-contrib/otelc"
 )
@@ -201,17 +201,11 @@ func runInformer() bool {
 		return false
 	}
 
-	// update the pod
-	err = retry.RetryOnConflict(retry.DefaultRetry, func() error {
-		latestPod, err := clientset.CoreV1().Pods(corev1.NamespaceDefault).Get(ctx, pod.Name, metav1.GetOptions{})
-		if err != nil {
-			return err
-		}
-
-		latestPod.Labels = map[string]string{"updated": "true"}
-		_, err = clientset.CoreV1().Pods(corev1.NamespaceDefault).Update(ctx, latestPod, metav1.UpdateOptions{})
-		return err
-	})
+	// Change the actual label atomically. Kubelet status updates may advance
+	// resourceVersion between a read and PUT; their incidental conflict/retry
+	// counts are unrelated to informer instrumentation.
+	_, err = clientset.CoreV1().Pods(corev1.NamespaceDefault).Patch(ctx, pod.Name,
+		types.MergePatchType, []byte(`{"metadata":{"labels":{"updated":"true"}}}`), metav1.PatchOptions{})
 	if err != nil {
 		log.Printf("Failed to update pod: %v", err)
 		return false
