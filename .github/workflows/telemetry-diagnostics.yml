@@ -81,4 +81,5 @@ jobs:
           path: |
             contrib/test/runner/build/**/actual*.json
             contrib/test/runner/build/**/actual*.yaml
+            contrib/test/runner/build/**/native-diagnostics/**
           if-no-files-found: warn

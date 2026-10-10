@@ -22,7 +22,7 @@ import time
 import uuid
 
 import yaml
-from fixture_modules import declared_modules, pin_declared_modules
+from fixture_modules import declared_modules, diagnostic_build_script, pin_declared_modules
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 CONTRIB = ROOT
@@ -301,6 +301,7 @@ def run_side(side, runid, ws, go, cfg):
     # library lack requires for the others. GOFLAGS=-mod=mod lets the build
     # itself add whatever is actually needed for THIS scenario's graph.
     script = "cd /ws && (go mod tidy || true) && " + " && ".join(build_cmds)
+    script = diagnostic_build_script(script)
     build_args += [f"golang:{go}-bookworm", "bash", "-c", script]
     try:
         r = subprocess.run(["docker", *build_args], capture_output=True, text=True)

@@ -26,6 +26,7 @@ import time
 import uuid
 
 import yaml
+from fixture_modules import diagnostic_build_script
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 CONTRIB = os.environ.get("CONTRIB_DIR") or os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -230,6 +231,7 @@ def run_side(side, runid, ws, go, cfg):
     for k, v in env.items():
         build_args += ["-e", f"{k}={v}"]
     script = "cd /ws && go mod download && " + " && ".join(build_cmds)
+    script = diagnostic_build_script(script)
     build_args += [f"golang:{go}-bookworm", "bash", "-c", script]
     try:
         r = subprocess.run(["docker", *build_args], capture_output=True, text=True)

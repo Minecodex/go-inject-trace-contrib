@@ -116,6 +116,7 @@ jobs:
             contrib/test/runner/ci-*.json
             contrib/test/runner/build/**/actual*.json
             contrib/test/runner/build/**/actual*.yaml
+            contrib/test/runner/build/**/native-diagnostics/**
 
   ci-gate:
     name: CI
