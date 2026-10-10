@@ -153,8 +153,11 @@ def canon_traces(data):
                 slot["spans"].append(s)
     out = []
     for tid, slot in traces.items():
-        out.append({"resource": slot["resource"],
-                    "tree": canon_span_tree(slot["spans"])})
+        tree = canon_span_tree(slot["spans"])
+        # Health polling is intentionally removed above. A trace containing
+        # only those volatile spans must not leave a counted empty envelope.
+        if tree:
+            out.append({"resource": slot["resource"], "tree": tree})
     out.sort(key=canon_key)
     return out
 

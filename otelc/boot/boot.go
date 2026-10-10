@@ -110,6 +110,7 @@ func setupOpenTelemetry(cfg Config) {
 	ctx := context.Background()
 
 	res, err := resource.New(ctx, resource.WithProcess(),
+		resource.WithTelemetrySDK(),
 		resource.WithOS(),
 		resource.WithContainer(),
 		resource.WithHost(),
