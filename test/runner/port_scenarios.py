@@ -18,7 +18,7 @@ import yaml
 
 OFFICIAL = r"D:\workspace\go\skywalking-go\test\plugins\scenarios"
 OUT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scenarios"))
-SKIP = {"logrus", "zap", "plugin_exclusion"}  # logger instruments are stretch
+SKIP = {"plugin_exclusion"}
 FRAMEWORK_PINS = {
     "dubbo.apache.org/dubbo-go/v3": "v3.0.1",
     "github.com/apache/pulsar-client-go": "v0.12.0",
@@ -40,6 +40,8 @@ FRAMEWORK_PINS = {
     "go-micro.dev/v4": "v4.9.0",
     "go.mongodb.org/mongo-driver": "v1.11.7",
     "google.golang.org/grpc": "v1.56.2",
+    "github.com/sirupsen/logrus": "v1.9.3",
+    "go.uber.org/zap": "v1.21.0",
     "gorm.io/driver/mysql": "v1.5.1",
     "gorm.io/driver/postgres": "v1.5.2",
     "gorm.io/gorm": "v1.25.1",

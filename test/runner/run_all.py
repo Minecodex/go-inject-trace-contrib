@@ -13,6 +13,7 @@ ORDER = [
     "mysql", "postgres", "gorm", "gorm-postgres", "go-redisv9", "mongo", "go-elasticsearchv8",
     "trace-activation", "metric-activation", "logging-activation",
     "runtime_metrics", "cross-goroutine", "so11y", "discard-reporter", "short_versions_gin", "pprof",
+    "logrus", "zap",
 ]
 
 

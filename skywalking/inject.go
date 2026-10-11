@@ -23,6 +23,7 @@ import (
 	_ "github.com/kakj-go/go-inject-trace-contrib/skywalking/plugins/http"
 	_ "github.com/kakj-go/go-inject-trace-contrib/skywalking/plugins/irisv12"
 	_ "github.com/kakj-go/go-inject-trace-contrib/skywalking/plugins/kratosv2"
+	_ "github.com/kakj-go/go-inject-trace-contrib/skywalking/plugins/logrus"
 	_ "github.com/kakj-go/go-inject-trace-contrib/skywalking/plugins/microv4"
 	_ "github.com/kakj-go/go-inject-trace-contrib/skywalking/plugins/mongo"
 	_ "github.com/kakj-go/go-inject-trace-contrib/skywalking/plugins/mux"
@@ -32,5 +33,6 @@ import (
 	_ "github.com/kakj-go/go-inject-trace-contrib/skywalking/plugins/segmentio-kafka"
 	_ "github.com/kakj-go/go-inject-trace-contrib/skywalking/plugins/sql"
 	_ "github.com/kakj-go/go-inject-trace-contrib/skywalking/plugins/toolkit-activation"
+	_ "github.com/kakj-go/go-inject-trace-contrib/skywalking/plugins/zap"
 	_ "github.com/kakj-go/go-inject-trace-contrib/skywalking/runtime"
 )
