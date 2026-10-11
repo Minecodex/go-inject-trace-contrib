@@ -218,9 +218,9 @@ def wait_app(runid, app, url, timeout, host=None):
         state = subprocess.run(["docker", "inspect", "-f", "{{.State.Running}}", app],
                                capture_output=True, text=True).stdout.strip()
         if state != "true":
-            logs = subprocess.run(["docker", "logs", "--tail", "30", app],
-                                  capture_output=True, text=True).stdout
-            raise RuntimeError(f"{app} exited during build/startup:\n{logs}")
+            output = subprocess.run(["docker", "logs", "--tail", "100", app], capture_output=True, text=True)
+            state_detail = subprocess.run(["docker", "inspect", "-f", "{{json .State}}", app], capture_output=True, text=True)
+            raise RuntimeError(f"{app} exited during build/startup:\n{state_detail.stdout}\n{output.stdout}{output.stderr}")
         time.sleep(3)
     raise TimeoutError(f"health check failed for {url}: {last}")
 
@@ -312,6 +312,12 @@ def run_side(side, runid, ws, go, cfg):
         return out
     finally:
         for name in [f"{runid}-build{side}"] + [f"{runid}-{side.lower()}-" + a["name"] for a in (cfg.get("apps") or [{"name": "app"}])]:
+            diagnostics = os.path.join(ws, "native-diagnostics")
+            os.makedirs(diagnostics, exist_ok=True)
+            output = subprocess.run(["docker", "logs", "--tail", "200", name], capture_output=True, text=True)
+            state = subprocess.run(["docker", "inspect", "-f", "{{json .State}}", name], capture_output=True, text=True)
+            with open(os.path.join(diagnostics, name + ".log"), "w", encoding="utf-8") as report:
+                report.write(state.stdout + output.stdout + output.stderr)
             subprocess.run(["docker", "rm", "-f", name], capture_output=True)
 
 

@@ -16,6 +16,10 @@ on:
         type: choice
         options: ['1.26', '1.25', '1.27']
         default: '1.26'
+      framework:
+        description: Optional single declared framework version
+        type: string
+        default: ''
 permissions:
   contents: read
 jobs:
@@ -61,6 +65,7 @@ jobs:
           FAMILY: ${{ inputs.family || 'otelc' }}
           SCENARIO: ${{ matrix.scenario }}
           GO_MINOR: ${{ inputs.go || '1.26' }}
+          FRAMEWORK: ${{ inputs.framework }}
         shell: python
         run: |
           import os, subprocess, sys
@@ -73,7 +78,10 @@ jobs:
               raise SystemExit('diagnostic scenario must belong to the declared catalog')
           root = 'scenarios-otelc' if family == 'otelc' else 'scenarios'
           runner = 'run_ab_otelc.py' if family == 'otelc' else 'run_ab.py'
-          subprocess.run([sys.executable, '-u', str(Path('test/runner') / runner), '--scenario', str(Path('test') / root / name), '--go', os.environ['GO_MINOR']], check=True)
+          command = [sys.executable, '-u', str(Path('test/runner') / runner), '--scenario', str(Path('test') / root / name), '--go', os.environ['GO_MINOR']]
+          if os.environ['FRAMEWORK']:
+              command += ['--framework', os.environ['FRAMEWORK']]
+          subprocess.run(command, check=True)
       - uses: actions/upload-artifact@v4
         if: always()
         with:
