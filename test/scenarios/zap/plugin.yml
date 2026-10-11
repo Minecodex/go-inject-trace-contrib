@@ -17,3 +17,4 @@ support-version:
   - v1.22.0
   - v1.23.0
   - v1.24.0
+  excepted-file: excepted-gateway.yml

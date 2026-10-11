@@ -15,6 +15,7 @@ import shutil
 import sys
 
 import yaml
+from control_contracts import gateway_contract
 
 OFFICIAL = r"D:\workspace\go\skywalking-go\test\plugins\scenarios"
 OUT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scenarios"))
@@ -204,6 +205,11 @@ def port(name, force=False):
         "//go:build goinject || generate\n\npackage main\n\n"
         "import _ \"github.com/kakj-go/go-inject-trace-contrib/skywalking\"\n")
     shutil.copy(os.path.join(src_dir, "config", "excepted.yml"), os.path.join(out_dir, "excepted.yml"))
+    original_contract = yaml.safe_load(open(os.path.join(out_dir, "excepted.yml"), encoding="utf-8"))
+    controlled, removed = gateway_contract(original_contract)
+    if removed:
+        yaml.safe_dump(controlled, open(os.path.join(out_dir, "excepted-gateway.yml"), "w", encoding="utf-8"), sort_keys=False)
+        our["support-version"] = [dict(row, **{"excepted-file": "excepted-gateway.yml"}) for row in cells]
     # carry the official go.sum so -mod=mod resolution stays anchored to
     # the tested transitive dependency versions instead of drifting to latest
     official_sum = os.path.join(src_dir, "go.sum")

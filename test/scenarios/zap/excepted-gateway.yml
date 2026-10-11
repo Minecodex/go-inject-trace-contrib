@@ -1,0 +1,40 @@
+segmentItems: []
+meterItems: []
+logItems:
+- serviceName: zap
+  logSize: ge 2
+  logs:
+  - timestamp: nq 0
+    endpoint: GET:/provider
+    body:
+      type: TEXT
+      content:
+        text: providerHandler
+    traceContext:
+      traceId: not null
+      traceSegmentId: not null
+      spanId: 0
+    tags:
+      data:
+      - key: LEVEL
+        value: info
+      - key: module
+        value: test-service-provider
+    layer: GENERAL
+  - timestamp: nq 0
+    endpoint: GET:/consumer
+    body:
+      type: TEXT
+      content:
+        text: consumerHandler
+    traceContext:
+      traceId: not null
+      traceSegmentId: not null
+      spanId: 0
+    tags:
+      data:
+      - key: LEVEL
+        value: info
+      - key: module
+        value: test-service-consumer
+    layer: GENERAL
