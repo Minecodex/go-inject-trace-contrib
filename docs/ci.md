@@ -14,4 +14,6 @@ SkyWalking 新增 Logrus 与 Zap 原生日志插桩：沿用固定官方的日�
 
 官方 SkyWalking Agent 仍固定 `b52ef5762fab16d85704a7d35b8968165d351b85`；OTel 官方工具仍固定 `70b4fe80ffb5032e6cdb79f543da5069ee4133b5`。归一化、官方 Collector 合同、原始两侧遥测与源码身份均保留。Linux Docker 对照不宣称 Windows/macOS 的官方 Agent Runtime 验收；原生基本包检查与完整遥测范围分别报告。
 
+Dubbo 使用冻结的 Triple 生成器。两侧相同的生成后步骤把单值 metadata 表示为标量附件，以兼容 v3.0.1 的 GetAttachment；多值附件和线上实际 header 保留，官方 Agent 源码不改动，全部四个 Dubbo 版本仍验证原始跨进程引用。框架日志仅归一化 Dubbo URL 的进程号、时间戳及 MetadataService 随机监听端口，业务 RPC 地址、方法、框架版本、日志内容和关联状态仍参与对照。
+
 日志示例同时保留固定上游原始 excepted.yml 与显式 excepted-gateway.yml。后者仅不再要求原 Mock Collector 不支持的三项后台查询错误，因为既有控制网关返回合法空 Commands；两条业务日志的内容、级别、模块标签和真实关联仍完全验证，实际遥测与 A/B 日志不删减。

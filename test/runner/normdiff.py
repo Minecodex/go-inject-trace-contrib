@@ -9,6 +9,7 @@ but B may have extra segments from timing artifacts (stale MQ consumption).
 import re
 import sys
 import json
+from copy import deepcopy
 
 
 def normalize_tag_value(value):
@@ -27,6 +28,28 @@ def normalize_tag_value(value):
     if "=" not in value:
         return value
     return re.sub(r"[?&](timestamp|pid|port|t|ts|_)=\d+", "", value)
+
+
+def normalize_log_body(body):
+    """Keep framework messages while masking process-specific Dubbo URL fields."""
+    if not isinstance(body, dict) or body.get("type") != "TEXT":
+        return body
+    text = (body.get("content") or {}).get("text")
+    if not isinstance(text, str):
+        return body
+
+    def normalize_url(match):
+        # The metadata listener binds port 0. Keep business RPC addresses,
+        # service paths, release versions and nonvolatile URL parameters.
+        url = normalize_tag_value(match[0])
+        return re.sub(
+            r"^(dubbo://[^/]*:)\d+(/org\.apache\.dubbo\.metadata\.MetadataService(?:\?|$))",
+            r"\1<ephemeral>\2", url,
+        )
+
+    result = deepcopy(body)
+    result["content"]["text"] = re.sub(r"(?:dubbo|tri)://[^\s\]]+", normalize_url, text)
+    return result
 
 
 def normalize(data):
@@ -74,10 +97,10 @@ def normalize(data):
             out["logs"].append({
                 "service": item.get("serviceName"),
                 "endpoint": log.get("endpoint"),
-                "body": log.get("body"),
+                "body": normalize_log_body(log.get("body")),
                 "layer": log.get("layer"),
                 "tags": sorted((tag.get("key"), normalize_tag_value(tag.get("value"))) for tag in (log.get("tags") or {}).get("data", [])),
-                "correlated": bool(context.get("traceId") and context.get("traceSegmentId")),
+                "correlated": all(context.get(key) not in (None, "", "N/A") for key in ("traceId", "traceSegmentId")),
                 "spanId": context.get("spanId") if context else None,
             })
     out["logs"].sort(key=lambda item: json.dumps(item, sort_keys=True))
