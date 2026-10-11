@@ -15,7 +15,7 @@ dependencies:
     # takes 20-40s to accept clients, which races the app's first publish
     healthcheck:
       test:
-      - CMD
+      - CMD-SHELL
       - bin/pulsar-admin brokers healthcheck
       interval: 10s
       retries: 30

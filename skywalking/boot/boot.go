@@ -20,6 +20,7 @@ import (
 	"github.com/apache/skywalking-go/plugins/core/operator"
 	"github.com/apache/skywalking-go/plugins/core/reporter"
 	grpc_reporter "github.com/apache/skywalking-go/plugins/core/reporter/grpc"
+	"github.com/kakj-go/go-inject-trace-contrib/skywalking/logbridge"
 )
 
 // The runtime accessors only exist in builds that inject the skywalking
@@ -79,6 +80,7 @@ func Init() {
 		}
 		return tracer
 	}
+	logbridge.Bind()
 
 	rep, err := initReporter(tracer.Log)
 	if err != nil {

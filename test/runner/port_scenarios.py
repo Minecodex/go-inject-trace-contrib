@@ -15,10 +15,11 @@ import shutil
 import sys
 
 import yaml
+from control_contracts import gateway_contract
 
 OFFICIAL = r"D:\workspace\go\skywalking-go\test\plugins\scenarios"
 OUT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scenarios"))
-SKIP = {"logrus", "zap", "plugin_exclusion"}  # logger instruments are stretch
+SKIP = {"plugin_exclusion"}
 FRAMEWORK_PINS = {
     "dubbo.apache.org/dubbo-go/v3": "v3.0.1",
     "github.com/apache/pulsar-client-go": "v0.12.0",
@@ -40,6 +41,8 @@ FRAMEWORK_PINS = {
     "go-micro.dev/v4": "v4.9.0",
     "go.mongodb.org/mongo-driver": "v1.11.7",
     "google.golang.org/grpc": "v1.56.2",
+    "github.com/sirupsen/logrus": "v1.9.3",
+    "go.uber.org/zap": "v1.21.0",
     "gorm.io/driver/mysql": "v1.5.1",
     "gorm.io/driver/postgres": "v1.5.2",
     "gorm.io/gorm": "v1.25.1",
@@ -106,13 +109,14 @@ MULTI_APP = {
     },
     "dubbo": {
         "build_steps": "\n".join([
-            "apt-get update -qq && apt-get install -y -qq protobuf-compiler",
-            "go install github.com/dubbogo/tools/cmd/protoc-gen-dubbo3grpc@latest",
+            "apt-get update -qq && apt-get install -y -qq protobuf-compiler python3",
             "go install github.com/dubbogo/tools/cmd/protoc-gen-go-triple@v1.0.10-rc2",
             "go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28",
             "go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2",
             "export PATH=$PATH:$(go env GOPATH)/bin",
             "protoc -I={WS}/api --go_out={WS}/api --go-triple_out={WS}/api {WS}/api/api.proto",
+            "python3 {WS}/api/normalize_metadata.py {WS}/api",
+            "gofmt -w {WS}/api/*_triple.pb.go",
         ]),
         "build_targets": [{"out": "dubbo-server", "pkg": "/ws/go-server/cmd/server.go"},
                           {"out": "dubbo-client", "pkg": "/ws/go-client/cmd/client.go"}],
@@ -202,6 +206,11 @@ def port(name, force=False):
         "//go:build goinject || generate\n\npackage main\n\n"
         "import _ \"github.com/kakj-go/go-inject-trace-contrib/skywalking\"\n")
     shutil.copy(os.path.join(src_dir, "config", "excepted.yml"), os.path.join(out_dir, "excepted.yml"))
+    original_contract = yaml.safe_load(open(os.path.join(out_dir, "excepted.yml"), encoding="utf-8"))
+    controlled, removed = gateway_contract(original_contract)
+    if removed:
+        yaml.safe_dump(controlled, open(os.path.join(out_dir, "excepted-gateway.yml"), "w", encoding="utf-8"), sort_keys=False)
+        our["support-version"] = [dict(row, **{"excepted-file": "excepted-gateway.yml"}) for row in cells]
     # carry the official go.sum so -mod=mod resolution stays anchored to
     # the tested transitive dependency versions instead of drifting to latest
     official_sum = os.path.join(src_dir, "go.sum")

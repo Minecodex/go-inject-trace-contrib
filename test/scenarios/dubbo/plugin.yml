@@ -11,9 +11,7 @@ support-version:
   - v3.0.2
   - v3.0.4
   - v3.0.5
-build_steps: 'apt-get update -qq && apt-get install -y -qq protobuf-compiler
-
-  go install github.com/dubbogo/tools/cmd/protoc-gen-dubbo3grpc@latest
+build_steps: 'apt-get update -qq && apt-get install -y -qq protobuf-compiler python3
 
   go install github.com/dubbogo/tools/cmd/protoc-gen-go-triple@v1.0.10-rc2
 
@@ -23,7 +21,11 @@ build_steps: 'apt-get update -qq && apt-get install -y -qq protobuf-compiler
 
   export PATH=$PATH:$(go env GOPATH)/bin
 
-  protoc -I={WS}/api --go_out={WS}/api --go-triple_out={WS}/api {WS}/api/api.proto'
+  protoc -I={WS}/api --go_out={WS}/api --go-triple_out={WS}/api {WS}/api/api.proto
+
+  python3 {WS}/api/normalize_metadata.py {WS}/api
+
+  gofmt -w {WS}/api/*_triple.pb.go'
 build_targets:
 - out: dubbo-server
   pkg: /ws/go-server/cmd/server.go

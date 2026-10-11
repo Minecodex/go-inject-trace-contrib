@@ -18,7 +18,6 @@
 package main
 
 import (
-	"context"
 	"log"
 	"net/http"
 
@@ -46,7 +45,7 @@ func main() {
 		req := &api.HelloRequest{
 			Name: "laurence",
 		}
-		resp, err := grpcGreeterImpl.SayHello(context.Background(), req)
+		resp, err := grpcGreeterImpl.SayHello(request.Context(), req)
 		if err != nil {
 			writer.WriteHeader(500)
 			_, _ = writer.Write([]byte(err.Error()))

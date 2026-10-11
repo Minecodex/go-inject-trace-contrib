@@ -1,0 +1,20 @@
+entry: /consumer
+health: /health
+port: '8080'
+env:
+  SW_AGENT_LOG_REPORTER_LABEL_KEYS: module
+dependencies: {}
+support-version:
+- go: '1.25'
+  framework:
+  - v1.17.0
+  - v1.18.0
+  - v1.18.1
+  - v1.19.0
+  - v1.19.1
+  - v1.20.0
+  - v1.21.0
+  - v1.22.0
+  - v1.23.0
+  - v1.24.0
+  excepted-file: excepted-gateway.yml
