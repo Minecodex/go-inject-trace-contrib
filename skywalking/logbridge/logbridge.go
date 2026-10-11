@@ -4,6 +4,7 @@ package logbridge
 
 import (
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync"
@@ -89,7 +90,15 @@ func Bind() {
 	if logger == nil {
 		return
 	}
-	if change, ok := current.Logger().(interface{ ChangeLogger(operator.LogOperator) }); ok {
+	active := current.Logger()
+	if active == nil {
+		return
+	}
+	value := reflect.ValueOf(active)
+	if (value.Kind() == reflect.Pointer || value.Kind() == reflect.Interface) && value.IsNil() {
+		return
+	}
+	if change, ok := active.(interface{ ChangeLogger(operator.LogOperator) }); ok {
 		change.ChangeLogger(logger)
 	}
 }
