@@ -109,13 +109,14 @@ MULTI_APP = {
     },
     "dubbo": {
         "build_steps": "\n".join([
-            "apt-get update -qq && apt-get install -y -qq protobuf-compiler",
-            "go install github.com/dubbogo/tools/cmd/protoc-gen-dubbo3grpc@latest",
+            "apt-get update -qq && apt-get install -y -qq protobuf-compiler python3",
             "go install github.com/dubbogo/tools/cmd/protoc-gen-go-triple@v1.0.10-rc2",
             "go install google.golang.org/protobuf/cmd/protoc-gen-go@v1.28",
             "go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@v1.2",
             "export PATH=$PATH:$(go env GOPATH)/bin",
             "protoc -I={WS}/api --go_out={WS}/api --go-triple_out={WS}/api {WS}/api/api.proto",
+            "python3 {WS}/api/normalize_metadata.py {WS}/api",
+            "gofmt -w {WS}/api/*_triple.pb.go",
         ]),
         "build_targets": [{"out": "dubbo-server", "pkg": "/ws/go-server/cmd/server.go"},
                           {"out": "dubbo-client", "pkg": "/ws/go-client/cmd/client.go"}],
